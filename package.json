@@ -26,6 +26,7 @@
     "views": {
       "tabsLoverContainer": [
         {
+          "type": "webview",
           "id": "tabsLover",
           "name": "Tabs Lover"
         }
@@ -137,63 +138,6 @@
           "when": "view == tabsLover && tabsLover.copilotAvailable",
           "group": "navigation"
         }
-      ],
-      "view/item/context": [
-        {
-          "command": "tabsLover.closeTab",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "inline"
-        },
-        {
-          "command": "tabsLover.pinTab",
-          "when": "view == tabsLover && viewItem =~ /^tab/ && !(viewItem =~ /pinned/)",
-          "group": "1_state@1"
-        },
-        {
-          "command": "tabsLover.unpinTab",
-          "when": "view == tabsLover && viewItem =~ /pinned/",
-          "group": "1_state@2"
-        },
-        {
-          "command": "tabsLover.closeOthers",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "2_close@1"
-        },
-        {
-          "command": "tabsLover.closeToRight",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "2_close@2"
-        },
-        {
-          "command": "tabsLover.revealInExplorer",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "3_file@1"
-        },
-        {
-          "command": "tabsLover.copyRelativePath",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "3_file@2"
-        },
-        {
-          "command": "tabsLover.copyFileContents",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "3_file@3"
-        },
-        {
-          "command": "tabsLover.compareWithActive",
-          "when": "view == tabsLover && viewItem =~ /^tab/",
-          "group": "4_compare@1"
-        },
-        {
-          "command": "tabsLover.moveToGroup",
-          "when": "view == tabsLover && viewItem =~ /^tab/ && tabsLover.hasMultipleGroups",
-          "group": "5_move@1"
-        },
-        {
-          "command": "tabsLover.addToCopilotChat",
-          "when": "view == tabsLover && viewItem =~ /canAddToChat/ && tabsLover.copilotAvailable",
-          "group": "6_copilot@1"
-        }
       ]
     },
     "configuration": {
@@ -206,7 +150,7 @@
         },
         "tabsLover.tabHeight": {
           "type": "number",
-          "default": 28,
+          "default": 40,
           "description": "Height of each tab item in pixels."
         },
         "tabsLover.iconSize": {
