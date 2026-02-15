@@ -1,128 +1,96 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
+import * as path   from 'path';
 
-/** Immutable metadata describing a tab's file. */
-export type SideTabMetadata = {
-  id: string;
-  uri: vscode.Uri;
-  label: string;
-  description?: string;
-  tooltip?: string;
-  fileType: string;
-};
+// The kind of editor input the tab represents.
+export type SideTabType = 'file' | 'webview' | 'custom' | 'notebook';
 
-/** Mutable runtime state of a tab. */
-export type SideTabState = {
-  isActive: boolean;
-  isDirty: boolean;
-  isPinned: boolean;
-  isPreview: boolean;
-  groupId: number;
-  viewColumn: vscode.ViewColumn;
-  indexInGroup: number;
-  scmStatus?: 'modified' | 'untracked' | 'staged' | 'clean';
-  copilotEdited?: boolean;
-  lastAccessTime: number;
-};
+// Immutable metadata describing a tab.
+export interface SideTabMetadata {
 
-/** Feature flags that control which actions are available on a tab. */
-export type SideTabCapabilities = {
-  canClose: boolean;
-  canPin: boolean;
-  canReveal: boolean;
-  canAddToChat: boolean;
-  canCompare: boolean;
-  canMove: boolean;
-};
+  id           : string;      // Unique identifier (uri-based for file tabs, label-based for webview tabs).
+  uri?         : vscode.Uri;  // File URI. Only present for file / custom / notebook tabs.
+  label        : string;      // Display name shown in the sidebar.
+  description? : string;      // Relative path (description line).
+  tooltip?     : string;      // Tooltip text.
+  fileType     : string;      // File extension (e.g. ".ts"). Empty for non-file tabs.
+  tabType      : SideTabType; // What kind of VS Code tab input this wraps.
 
-const DEFAULT_CAPABILITIES: SideTabCapabilities = {
-  canClose: true,
-  canPin: true,
-  canReveal: true,
-  canAddToChat: true,
-  canCompare: true,
-  canMove: true,
-};
+}
+
+// Mutable runtime state of a tab.
+export interface SideTabState {
+  isActive       : boolean;
+  isDirty        : boolean;
+  isPinned       : boolean;
+  isPreview      : boolean;
+  groupId        : number;
+  viewColumn     : vscode.ViewColumn;
+  indexInGroup   : number;
+  lastAccessTime : number;
+}
 
 /**
  * Represents a single tab in the Tabs Lover sidebar.
  * Wraps VS Code tab data and exposes high-level actions.
- */
+*/
 export class SideTab {
   constructor(
-    public metadata: SideTabMetadata,
+    public readonly metadata: SideTabMetadata,
     public state: SideTabState,
-    public capabilities: SideTabCapabilities = DEFAULT_CAPABILITIES
   ) {}
 
-  // === Basic actions ===
+  //:-->  Basic actions
 
-  /** Close this tab via the VS Code Tab API. */
   async close(): Promise<void> {
-    const tab = this.findVSCodeTab();
-    if (tab) {
-      await vscode.window.tabGroups.close(tab);
-    }
+    const t = this.findNativeTab();
+    if (t) { await vscode.window.tabGroups.close(t); }
   }
 
-  /** Activate this tab and close all other editors in the group. */
   async closeOthers(): Promise<void> {
     await this.activate();
     await vscode.commands.executeCommand('workbench.action.closeOtherEditors');
   }
 
-  /** Close all tabs to the right of this one in the same group. */
   async closeToRight(): Promise<void> {
-    const group = this.getGroup();
-    if (!group) {
-      return;
-    }
 
-    const tabIndex = group.tabs.findIndex(t => {
-      const input = t.input as vscode.TabInputText;
-      return input.uri?.toString() === this.metadata.uri.toString();
-    });
+    const group = this.nativeGroup();
+    if (!group) { return; }
 
-    if (tabIndex === -1) {
-      return;
-    }
+    const idx = group.tabs.findIndex(t => this.matchesNative(t));
+    if (idx === -1) { return; }
 
-    const tabsToClose = group.tabs.slice(tabIndex + 1);
-    for (const tab of tabsToClose) {
-      await vscode.window.tabGroups.close(tab);
+    for (const t of group.tabs.slice(idx + 1)) {
+      await vscode.window.tabGroups.close(t);
     }
   }
 
-  /** Pin this tab in its editor group. */
   async pin(): Promise<void> {
     await this.activate();
     await vscode.commands.executeCommand('workbench.action.pinEditor');
     this.state.isPinned = true;
   }
 
-  /** Unpin this tab in its editor group. */
   async unpin(): Promise<void> {
     await this.activate();
     await vscode.commands.executeCommand('workbench.action.unpinEditor');
     this.state.isPinned = false;
   }
 
-  /** Reveal this file in the Explorer view. */
   async revealInExplorer(): Promise<void> {
-    await vscode.commands.executeCommand('revealInExplorer', this.metadata.uri);
+    if (this.metadata.uri) {
+      await vscode.commands.executeCommand('revealInExplorer', this.metadata.uri);
+    }
   }
 
-  // === Advanced actions ===
-
-  /** Copy the workspace-relative path to the clipboard. */
   async copyRelativePath(): Promise<void> {
-    const relative = vscode.workspace.asRelativePath(this.metadata.uri);
-    await vscode.env.clipboard.writeText(relative);
-    vscode.window.showInformationMessage(`Copied: ${relative}`);
+    if (!this.metadata.uri) { return; }
+    const rel = vscode.workspace.asRelativePath(this.metadata.uri);
+    await vscode.env.clipboard.writeText(rel);
+    vscode.window.showInformationMessage(`Copied: ${rel}`);
   }
 
-  /** Copy the entire file contents to the clipboard. */
   async copyFileContents(): Promise<void> {
+    if (!this.metadata.uri) { return; }
     try {
       const doc = await vscode.workspace.openTextDocument(this.metadata.uri);
       await vscode.env.clipboard.writeText(doc.getText());
@@ -132,58 +100,84 @@ export class SideTab {
     }
   }
 
-  /** Open a diff view comparing the active editor with this file. */
   async compareWithActive(): Promise<void> {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) {
-      vscode.window.showWarningMessage('No active editor to compare with');
-      return;
-    }
-
+    if (!this.metadata.uri) { return; }
+    const active = vscode.window.activeTextEditor;
+    if (!active) { return; }
     await vscode.commands.executeCommand(
       'vscode.diff',
-      activeEditor.document.uri,
+      active.document.uri,
       this.metadata.uri,
-      `${path.basename(activeEditor.document.fileName)} ↔ ${this.metadata.label}`
+      `${path.basename(active.document.fileName)} ↔ ${this.metadata.label}`,
     );
   }
 
-  /** Move this tab to a different editor group column. */
-  async moveToGroup(targetColumn: vscode.ViewColumn): Promise<void> {
+  async moveToGroup(target: vscode.ViewColumn): Promise<void> {
+    if (!this.metadata.uri) { return; }
     await this.close();
-    const doc = await vscode.workspace.openTextDocument(this.metadata.uri);
-    await vscode.window.showTextDocument(doc, {
-      viewColumn: targetColumn,
+    await vscode.commands.executeCommand('vscode.open', this.metadata.uri, {
+      viewColumn: target,
       preview: this.state.isPreview,
-      preserveFocus: true,
     });
   }
 
-  // === Internal helpers ===
+  //:-->  Activate (focus)
 
-  /** Focus this tab in the editor. */
   async activate(): Promise<void> {
-    const doc = await vscode.workspace.openTextDocument(this.metadata.uri);
-    await vscode.window.showTextDocument(doc, {
-      viewColumn: this.state.viewColumn,
-      preserveFocus: false,
-    });
+    if (this.metadata.tabType === 'webview') {
+      return this.activateWebview();
+    }
+    if (!this.metadata.uri) { return; }
+    try {
+      const doc = await vscode.workspace.openTextDocument(this.metadata.uri);
+      await vscode.window.showTextDocument(doc, {
+        viewColumn: this.state.viewColumn,
+        preserveFocus: false,
+      });
+    } catch {
+      await vscode.commands.executeCommand('vscode.open', this.metadata.uri, {
+        viewColumn: this.state.viewColumn,
+        preview: this.state.isPreview,
+      });
+    }
   }
 
-  private findVSCodeTab(): vscode.Tab | undefined {
-    const group = vscode.window.tabGroups.all.find(
-      g => g.viewColumn === this.state.viewColumn
-    );
+  //:-->  Private helpers
 
-    return group?.tabs.find(t => {
-      const input = t.input as vscode.TabInputText;
-      return input.uri?.toString() === this.metadata.uri.toString();
-    });
+  private static readonly WEBVIEW_COMMANDS: Record<string, string> = {
+    settings:                 'workbench.action.openSettings2',
+    extension:                'workbench.extensions.action.showInstalledExtensions',
+    keyboard:                 'workbench.action.openGlobalKeybindings',
+    welcome:                  'workbench.action.showWelcomePage',
+    'release notes':          'update.showCurrentReleaseNotes',
+    'interactive playground': 'workbench.action.showInteractivePlayground',
+  };
+
+  private async activateWebview(): Promise<void> {
+    const label = this.metadata.label.toLowerCase();
+    for (const [keyword, cmd] of Object.entries(SideTab.WEBVIEW_COMMANDS)) {
+      if (label.includes(keyword)) {
+        try { await vscode.commands.executeCommand(cmd); } catch { /* tab may be gone */ }
+        return;
+      }
+    }
   }
 
-  private getGroup(): vscode.TabGroup | undefined {
-    return vscode.window.tabGroups.all.find(
-      g => g.viewColumn === this.state.viewColumn
-    );
+  private matchesNative(t: vscode.Tab): boolean {
+    if (t.input instanceof vscode.TabInputWebview) { return t.label === this.metadata.label; } // Si es webview, no URI to compare — match by label instead (e.g. "Settings", "Extensions")
+    const uri = this.metadata.uri;
+    if (!uri) { return false; }
+    if (t.input instanceof vscode.TabInputText)     { return t.input.uri.toString() === uri.toString(); }
+    if (t.input instanceof vscode.TabInputCustom)   { return t.input.uri.toString() === uri.toString(); }
+    if (t.input instanceof vscode.TabInputNotebook)  { return t.input.uri.toString() === uri.toString(); }
+    return false;
+  }
+
+  private findNativeTab(): vscode.Tab | undefined {
+    return this.nativeGroup()?.tabs.find(t => this.matchesNative(t));
+  }
+
+  private nativeGroup(): vscode.TabGroup | undefined {
+    return vscode.window.tabGroups.all.find(g => g.viewColumn === this.state.viewColumn);
   }
 }

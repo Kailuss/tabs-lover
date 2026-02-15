@@ -3,11 +3,11 @@ import * as vscode from 'vscode';
 
 /** Represents an editor group containing multiple tabs. */
 export type SideTabGroup = {
-  id: number;
-  viewColumn: vscode.ViewColumn;
-  isActive: boolean;
-  tabs: SideTab[];
-  label: string;
+  id         : number;
+  viewColumn : vscode.ViewColumn;
+  isActive   : boolean;
+  tabs       : SideTab[];
+  label      : string;
 };
 
 /**
@@ -16,10 +16,10 @@ export type SideTabGroup = {
  */
 export function createTabGroup(group: vscode.TabGroup): SideTabGroup {
   return {
-    id: group.viewColumn,
-    viewColumn: group.viewColumn,
-    isActive: group.isActive,
-    tabs: [],
-    label: `Group ${group.viewColumn}`,
+    id         : group.viewColumn,
+    viewColumn : group.viewColumn,
+    isActive   : group.isActive,
+    tabs       : [],
+    label      : `Group ${group.viewColumn}`,
   };
 }
