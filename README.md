@@ -1,71 +1,69 @@
-# tabs-lover README
+# Tabs Lover
 
-This is the README for your extension "tabs-lover". After writing up a brief description, we recommend including the following sections.
+A VS Code extension that replaces the native tab bar with a vertical, fully styled tab list in the sidebar.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- **Vertical tab list** in a dedicated sidebar panel
+- **40px row height** with file name + relative path on separate lines
+- **4px accent border** on the active tab (uses your theme's focus color)
+- **Real file icons** from your active icon theme (Material Icons, Seti, etc.)
+- **Hover actions** — Pin, Add to Copilot Chat, Close (appear on hover, no layout shift)
+- **isDirty indicator** — modified dot that swaps for close button on hover
+- **All tab types** — Text files, Settings, Extensions, Notebooks, Custom editors
+- **Context menu** — Right-click for Close Others, Reveal in Explorer, Copy Path, Diff, etc.
+- **Copilot Chat integration** — Add files to chat context with one click
+- **Multi-group support** — Groups shown with headers when multiple editor groups are open
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- VS Code **1.108.0** or later
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `tabsLover.showFilePath` | `boolean` | `true` | Show relative file path below file name |
+| `tabsLover.tabHeight` | `number` | `40` | Tab row height in pixels |
+| `tabsLover.iconSize` | `number` | `16` | File icon size in pixels |
+| `tabsLover.enableHoverActions` | `boolean` | `true` | Show action buttons on hover |
+| `tabsLover.showStateIcons` | `boolean` | `true` | Show state indicators (dirty, pinned) |
+| `tabsLover.enableDragDrop` | `boolean` | `false` | Experimental drag & drop reordering |
 
-For example:
+## Commands
 
-This extension contributes the following settings:
+| Command | Description |
+|---------|-------------|
+| `Tabs Lover: Refresh` | Force refresh the tab list |
+| `Tabs Lover: Close All` | Close all open editors |
+| `Tabs Lover: Add Files to Copilot Chat…` | Multi-select files for Copilot context |
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+Additional commands available via context menu: Close, Close Others, Close to Right, Pin/Unpin, Reveal in Explorer, Copy Relative Path, Copy File Contents, Compare with Active Editor, Move to Group.
 
-## Known Issues
+## Architecture
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+The extension uses a **WebviewView** (not TreeView) for full CSS control over the tab list:
 
-## Release Notes
+```
+VS Code Tab API → TabSyncService → TabStateService → TabsLoverWebviewProvider (HTML/CSS)
+                                                    ↗ TabIconManager (base64 icons)
+```
 
-Users appreciate release notes as you update your extension.
+See [INSTRUCTIONS.md](INSTRUCTIONS.md) for the complete architecture guide.
 
-### 1.0.0
+## Development
 
-Initial release of ...
+```bash
+npm install
+npm run watch     # esbuild + tsc in parallel
+# Press F5 to launch Extension Development Host
+```
 
-### 1.0.1
+```bash
+npm run compile   # Full build (type-check + lint + esbuild)
+npm test          # Run tests
+```
 
-Fixed issue #.
+## License
 
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+MIT
