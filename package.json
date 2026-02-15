@@ -4,20 +4,233 @@
   "description": "Vertical tabs panel with advanced features",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.108.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tabsLoverContainer",
+          "title": "Tabs Lover",
+          "icon": "$(files)"
+        }
+      ]
+    },
+    "views": {
+      "tabsLoverContainer": [
+        {
+          "id": "tabsLover",
+          "name": "Tabs Lover"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "tabs-lover.helloWorld",
-        "title": "Hello World"
+        "command": "tabsLover.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.openTab",
+        "title": "Open Tab",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.closeTab",
+        "title": "Close Tab",
+        "icon": "$(close)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.closeOthers",
+        "title": "Close Others",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.closeToRight",
+        "title": "Close to the Right",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.closeAll",
+        "title": "Close All",
+        "icon": "$(close-all)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.pinTab",
+        "title": "Pin Tab",
+        "icon": "$(pinned)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.unpinTab",
+        "title": "Unpin Tab",
+        "icon": "$(pin)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.revealInExplorer",
+        "title": "Reveal in Explorer",
+        "icon": "$(go-to-file)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.copyRelativePath",
+        "title": "Copy Relative Path",
+        "icon": "$(clippy)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.copyFileContents",
+        "title": "Copy File Contents",
+        "icon": "$(copy)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.compareWithActive",
+        "title": "Compare with Active Editor",
+        "icon": "$(diff)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.moveToGroup",
+        "title": "Move to Group…",
+        "icon": "$(split-horizontal)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.addToCopilotChat",
+        "title": "Add to Copilot Chat",
+        "icon": "$(add)",
+        "category": "Tabs Lover"
+      },
+      {
+        "command": "tabsLover.addMultipleToCopilotChat",
+        "title": "Add Files to Copilot Chat…",
+        "icon": "$(sparkle)",
+        "category": "Tabs Lover"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "tabsLover.refresh",
+          "when": "view == tabsLover",
+          "group": "navigation"
+        },
+        {
+          "command": "tabsLover.closeAll",
+          "when": "view == tabsLover",
+          "group": "navigation"
+        },
+        {
+          "command": "tabsLover.addMultipleToCopilotChat",
+          "when": "view == tabsLover && tabsLover.copilotAvailable",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tabsLover.closeTab",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "inline"
+        },
+        {
+          "command": "tabsLover.pinTab",
+          "when": "view == tabsLover && viewItem =~ /^tab/ && !(viewItem =~ /pinned/)",
+          "group": "1_state@1"
+        },
+        {
+          "command": "tabsLover.unpinTab",
+          "when": "view == tabsLover && viewItem =~ /pinned/",
+          "group": "1_state@2"
+        },
+        {
+          "command": "tabsLover.closeOthers",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "2_close@1"
+        },
+        {
+          "command": "tabsLover.closeToRight",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "2_close@2"
+        },
+        {
+          "command": "tabsLover.revealInExplorer",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "3_file@1"
+        },
+        {
+          "command": "tabsLover.copyRelativePath",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "3_file@2"
+        },
+        {
+          "command": "tabsLover.copyFileContents",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "3_file@3"
+        },
+        {
+          "command": "tabsLover.compareWithActive",
+          "when": "view == tabsLover && viewItem =~ /^tab/",
+          "group": "4_compare@1"
+        },
+        {
+          "command": "tabsLover.moveToGroup",
+          "when": "view == tabsLover && viewItem =~ /^tab/ && tabsLover.hasMultipleGroups",
+          "group": "5_move@1"
+        },
+        {
+          "command": "tabsLover.addToCopilotChat",
+          "when": "view == tabsLover && viewItem =~ /canAddToChat/ && tabsLover.copilotAvailable",
+          "group": "6_copilot@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Tabs Lover",
+      "properties": {
+        "tabsLover.showFilePath": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the relative file path as description next to each tab."
+        },
+        "tabsLover.tabHeight": {
+          "type": "number",
+          "default": 28,
+          "description": "Height of each tab item in pixels."
+        },
+        "tabsLover.iconSize": {
+          "type": "number",
+          "default": 16,
+          "description": "Size of the file icon in pixels."
+        },
+        "tabsLover.enableHoverActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show action buttons when hovering over a tab."
+        },
+        "tabsLover.showStateIcons": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show state icons (pinned, modified, Copilot-edited) on tabs."
+        },
+        "tabsLover.enableDragDrop": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental drag & drop reordering of tabs."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

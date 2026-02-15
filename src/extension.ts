@@ -1,26 +1,105 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { TabsLoverProvider } from './providers/TabsLoverProvider';
+import { TabStateService } from './services/TabStateService';
+import { TabSyncService } from './services/TabSyncService';
+import { TabIconManager } from './services/TabIconManager';
+import { ThemeService } from './services/ThemeService';
+import { CopilotService } from './services/CopilotService';
+import { registerTabCommands } from './commands/tabCommands';
+import { registerCopilotCommands } from './commands/copilotCommands';
+import { Logger } from './utils/logger';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+console.log('[Tabs Lover] Module loaded, activate() will be called');
+
 export function activate(context: vscode.ExtensionContext) {
+  try {
+    Logger.initialize();
+    console.log('[Tabs Lover] Logger initialized');
+    Logger.log('🚀 Activating Tabs Lover…');
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "tabs-lover" is now active!');
+  } catch (initError) {
+    console.error('[Tabs Lover] Logger init failed:', initError);
+  }
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('tabs-lover.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Tabs Lover!');
-	});
+  try {
+    // Services
+    Logger.log('📦 Creating services…');
+    const stateService = new TabStateService();
+    Logger.log('✅ TabStateService created');
+    
+    const syncService = new TabSyncService(stateService);
+    Logger.log('✅ TabSyncService created');
+    
+    const iconManager = new TabIconManager();
+    Logger.log('✅ TabIconManager created');
+    
+    const themeService = new ThemeService();
+    Logger.log('✅ ThemeService created');
+    
+    const copilotService = new CopilotService();
+    Logger.log('✅ CopilotService created');
 
-	context.subscriptions.push(disposable);
+    // Provider
+    Logger.log('🎨 Creating TreeDataProvider…');
+    const provider = new TabsLoverProvider(stateService, copilotService);
+    Logger.log('✅ TabsLoverProvider created');
+
+    // Register TreeView
+    Logger.log('📋 Registering TreeView…');
+    const treeView = vscode.window.createTreeView('tabsLover', {
+      treeDataProvider: provider,
+      showCollapseAll: false,
+    });
+    context.subscriptions.push(treeView);
+    Logger.log('✅ TreeView registered');
+
+    // Activate services
+    Logger.log('⚙️ Activating services…');
+    syncService.activate(context);
+    Logger.log('✅ TabSyncService activated');
+    
+    themeService.activate(context);
+    Logger.log('✅ ThemeService activated');
+    
+    iconManager.initialize(context);
+    Logger.log('✅ TabIconManager initialized');
+
+    // Register commands
+    Logger.log('🎯 Registering commands…');
+    registerTabCommands(context, stateService);
+    Logger.log('✅ Tab commands registered');
+    
+    registerCopilotCommands(context, copilotService, stateService);
+    Logger.log('✅ Copilot commands registered');
+
+    // Refresh command
+    Logger.log('🔄 Registering refresh command…');
+    context.subscriptions.push(
+      vscode.commands.registerCommand('tabsLover.refresh', () => {
+        Logger.log('🔄 Refresh triggered');
+        provider.refresh();
+      })
+    );
+    Logger.log('✅ Refresh command registered');
+
+    // Refresh on theme change
+    themeService.onDidChangeTheme(() => {
+      Logger.log('🎨 Theme changed, refreshing…');
+      provider.refresh();
+    });
+
+    // Log stats
+    const stats = stateService.getStats();
+    Logger.log(`📊 Initial state: ${stats.tabs} tabs, ${stats.groups} groups`);
+
+    Logger.log('✅ Tabs Lover activated successfully!');
+  } catch (error) {
+    console.error('[Tabs Lover] Activation error:', error);
+    Logger.error('❌ Error during activation', error);
+    throw error;
+  }
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+  Logger.log('Tabs Lover deactivated');
+}
