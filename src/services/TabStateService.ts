@@ -4,8 +4,8 @@ import { SideTabGroup } from '../models/SideTabGroup';
 
 /**
  * In-memory state store for tabs and groups.
- * Emits `onDidChangeState` whenever the data changes so
- * the TreeDataProvider can refresh.
+ * Emits `onDidChangeState` for structural changes (refresh needed).
+ * Emits `onDidChangeStateSilent` for visual-only changes (no refresh).
  */
 export class TabStateService {
   private tabs: Map<string, SideTab> = new Map();
@@ -13,6 +13,9 @@ export class TabStateService {
 
   private _onDidChangeState = new vscode.EventEmitter<void>();
   readonly onDidChangeState = this._onDidChangeState.event;
+
+  private _onDidChangeStateSilent = new vscode.EventEmitter<void>();
+  readonly onDidChangeStateSilent = this._onDidChangeStateSilent.event;
 
   // === Tab management ===
 
@@ -57,6 +60,20 @@ export class TabStateService {
     }
 
     this._onDidChangeState.fire();
+  }
+
+  /** Update a tab without triggering tree refresh (for silent state updates like isActive). */
+  updateTabSilent(tab: SideTab): void {
+    this.tabs.set(tab.metadata.id, tab);
+
+    const group = this.groups.get(tab.state.groupId);
+    if (group) {
+      const index = group.tabs.findIndex(t => t.metadata.id === tab.metadata.id);
+      if (index !== -1) {
+        group.tabs[index] = tab;
+      }
+    }
+    this._onDidChangeStateSilent.fire();
   }
 
   getTab(id: string): SideTab | undefined {
@@ -118,7 +135,7 @@ export class TabStateService {
     const uriString = uri.toString();
 
     for (const tab of this.tabs.values()) {
-      if (tab.metadata.uri.toString() === uriString) {
+      if (tab.metadata.uri?.toString() === uriString) {
         if (groupId === undefined || tab.state.groupId === groupId) {
           return tab;
         }

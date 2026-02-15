@@ -2,21 +2,21 @@
 // Builds and exposes the iconMap (data only, not paths).
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fsp    from 'fs/promises';
+import * as path   from 'path';
 
 /**
  * Manages loading and caching of file icons based on the active icon theme.
  */
 export class TabIconManager {
-  private _iconCache: Map<string, string> = new Map();
-  private _iconMap: Record<string, string> | undefined;
-  private _iconThemeId: string | undefined;
-  private _iconThemePath: string | undefined;
-  private _iconThemeJson: any;
-  private _iconPathCache: Map<string, string> = new Map();
-  private _isPreloadingIcons: boolean = false;
-  private _configListener: vscode.Disposable | undefined;
+  private _iconCache         : Map<string, string> = new Map();
+  private _iconMap           : Record<string, string> | undefined;
+  private _iconThemeId       : string | undefined;
+  private _iconThemePath     : string | undefined;
+  private _iconThemeJson     : any;
+  private _iconPathCache     : Map<string, string> = new Map();
+  private _isPreloadingIcons : boolean = false;
+  private _configListener    : vscode.Disposable | undefined;
 
   /**
    * Initialises the icon manager and sets up listeners.
@@ -32,9 +32,7 @@ export class TabIconManager {
 
     context.subscriptions.push(this._configListener);
 
-    this.buildIconMap(context).catch(err =>
-      console.error('[TabsLover] Error building initial icon map:', err)
-    );
+    this.buildIconMap(context).catch(err => console.error('[TabsLover] Error building initial icon map:', err));
   }
 
   /**
@@ -88,14 +86,16 @@ export class TabIconManager {
 
       themePath = path.join(ext.extensionPath, themeContribution.path);
 
-      if (!fs.existsSync(themePath)) {
+      try {
+        await fsp.access(themePath);
+      } catch {
         this._iconMap = {};
         this._iconThemeId = iconTheme;
         return;
       }
 
       try {
-        const themeContent = fs.readFileSync(themePath, 'utf8');
+        const themeContent = await fsp.readFile(themePath, 'utf8');
         themeJson = JSON.parse(themeContent);
       } catch (err) {
         console.error('[TabsLover] Error parsing icon theme JSON:', err);
@@ -262,15 +262,19 @@ export class TabIconManager {
 
       const absIconPath = path.resolve(iconThemeDir, normalizedIconPath);
 
-      if (!fs.existsSync(absIconPath)) {
+      try {
+        await fsp.access(absIconPath);
+      } catch {
         const altPath = path.join(iconThemeDir, normalizedIconPath);
-        if (fs.existsSync(altPath)) {
-          return this.readIconAndConvertToBase64(altPath);
+        try {
+          await fsp.access(altPath);
+          return await this.readIconAndConvertToBase64(altPath);
+        } catch {
+          return undefined;
         }
-        return undefined;
       }
 
-      return this.readIconAndConvertToBase64(absIconPath, fileName);
+      return await this.readIconAndConvertToBase64(absIconPath, fileName);
     } catch (e) {
       console.error(`[TabsLover] Error getting icon for ${fileName}:`, e);
       return undefined;
@@ -344,8 +348,9 @@ export class TabIconManager {
                 languageId = doc.languageId;
               }
 
-              if (!languageId && input.uri.scheme === 'file' && fs.existsSync(input.uri.fsPath)) {
+              if (!languageId && input.uri.scheme === 'file') {
                 try {
+                  await fsp.access(input.uri.fsPath);
                   const opened = await vscode.workspace.openTextDocument(input.uri);
                   languageId = opened.languageId;
                 } catch {
@@ -393,16 +398,12 @@ export class TabIconManager {
   }
 
   /** Read an icon file from disk and return a base64 data URI. */
-  private readIconAndConvertToBase64(
+  private async readIconAndConvertToBase64(
     iconPath: string,
     _fileName?: string
-  ): string | undefined {
+  ): Promise<string | undefined> {
     try {
-      if (!fs.existsSync(iconPath)) {
-        return undefined;
-      }
-
-      const fileData = fs.readFileSync(iconPath);
+      const fileData = await fsp.readFile(iconPath);
       const base64Data = fileData.toString('base64');
       const isSvg = iconPath.toLowerCase().endsWith('.svg');
       const mimeType = isSvg ? 'image/svg+xml' : 'image/png';

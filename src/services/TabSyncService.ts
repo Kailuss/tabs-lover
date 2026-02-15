@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { TabStateService } from './TabStateService';
-import { SideTab, SideTabMetadata, SideTabState } from '../models/SideTab';
+import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../models/SideTab';
 import { createTabGroup } from '../models/SideTabGroup';
-import { Logger } from '../utils/logger';
 
 /**
  * Keeps the in-memory TabStateService in sync with VS Code's
@@ -16,130 +15,204 @@ export class TabSyncService {
 
   /** Register listeners and perform initial sync. */
   activate(context: vscode.ExtensionContext): void {
-    Logger.log('📡 TabSyncService.activate() called');
-    
-    // Initial sync
     this.syncAll();
-    
-    Logger.log(`📡 Initial sync complete. Total tabs: ${vscode.window.tabGroups.all.reduce((acc, g) => acc + g.tabs.length, 0)}`);
 
-    // Tab change listener
     this.disposables.push(
-      vscode.window.tabGroups.onDidChangeTabs(e => {
-        Logger.log(`📡 onDidChangeTabs: opened=${e.opened.length}, closed=${e.closed.length}, changed=${e.changed.length}`);
-        this.handleTabChanges(e);
-      })
+      vscode.window.tabGroups.onDidChangeTabs(e => this.handleTabChanges(e)),
     );
 
-    // Group change listener
     this.disposables.push(
-      vscode.window.tabGroups.onDidChangeTabGroups(e => {
-        Logger.log(`📡 onDidChangeTabGroups: opened=${e.opened.length}, closed=${e.closed.length}, changed=${e.changed.length}`);
-        this.handleGroupChanges(e);
-      })
+      vscode.window.tabGroups.onDidChangeTabGroups(e => this.handleGroupChanges(e)),
+    );
+
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor) { this.updateActiveTab(editor.document.uri); }
+      }),
     );
 
     context.subscriptions.push(...this.disposables);
-    Logger.log('📡 TabSyncService listeners registered');
   }
+
+  /* ------------------------------------------------------------------ */
+  /*  Event handlers                                                     */
+  /* ------------------------------------------------------------------ */
 
   private handleTabChanges(e: vscode.TabChangeEvent): void {
-    // Opened tabs
-    e.opened.forEach(tab => {
-      if (tab.input instanceof vscode.TabInputText) {
-        const sideTab = this.convertToSideTab(tab);
-        this.stateService.addTab(sideTab);
+    for (const tab of e.opened) {
+      const st = this.convertToSideTab(tab);
+      if (st) { this.stateService.addTab(st); }
+    }
+
+    for (const tab of e.closed) {
+      const st = this.convertToSideTab(tab);
+      if (st) { this.stateService.removeTab(st.metadata.id); }
+    }
+
+    for (const tab of e.changed) {
+      const st = this.convertToSideTab(tab);
+      if (!st) { continue; }
+
+      const existing = this.stateService.getTab(st.metadata.id);
+      if (!existing) {
+        this.stateService.updateTab(st);
+        continue;
       }
-    });
 
-    // Closed tabs
-    e.closed.forEach(tab => {
-      if (tab.input instanceof vscode.TabInputText) {
-        const input = tab.input as vscode.TabInputText;
-        const id = this.generateId(input.uri, tab.group.viewColumn);
-        this.stateService.removeTab(id);
+      const onlyActive =
+        existing.state.isDirty   === tab.isDirty   &&
+        existing.state.isPinned  === tab.isPinned  &&
+        existing.state.isPreview === tab.isPreview  &&
+        existing.state.isActive  !== tab.isActive;
+
+      existing.state.isActive  = tab.isActive;
+      existing.state.isDirty   = tab.isDirty;
+      existing.state.isPinned  = tab.isPinned;
+      existing.state.isPreview = tab.isPreview;
+
+      if (onlyActive) {
+        this.stateService.updateTabSilent(existing);
+      } else {
+        this.stateService.updateTab(existing);
       }
-    });
-
-    // Changed tabs (dirty, pinned, active…)
-    e.changed.forEach(tab => {
-      if (tab.input instanceof vscode.TabInputText) {
-        const sideTab = this.convertToSideTab(tab);
-        this.stateService.updateTab(sideTab);
-      }
-    });
-  }
-
-  private handleGroupChanges(e: vscode.TabGroupChangeEvent): void {
-    // Groups opened
-    e.opened.forEach(group => {
-      this.stateService.addGroup(createTabGroup(group));
-    });
-
-    // Groups closed
-    e.closed.forEach(group => {
-      this.stateService.removeGroup(group.viewColumn);
-    });
-
-    // Active group changed
-    if (e.changed.length > 0) {
-      const activeGroup = vscode.window.tabGroups.activeTabGroup;
-      this.stateService.setActiveGroup(activeGroup.viewColumn);
     }
   }
 
-  /** Perform a full sync of all groups and tabs. */
+  private handleGroupChanges(e: vscode.TabGroupChangeEvent): void {
+    for (const g of e.opened)  { this.stateService.addGroup(createTabGroup(g)); }
+    for (const g of e.closed)  { this.stateService.removeGroup(g.viewColumn); }
+
+    if (e.changed.length > 0) {
+      this.stateService.setActiveGroup(vscode.window.tabGroups.activeTabGroup.viewColumn);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Full sync                                                          */
+  /* ------------------------------------------------------------------ */
+
   private syncAll(): void {
-    // Sync groups
-    vscode.window.tabGroups.all.forEach(group => {
+    for (const group of vscode.window.tabGroups.all) {
       this.stateService.addGroup(createTabGroup(group));
-    });
+    }
 
-    // Sync tabs
     const allTabs: SideTab[] = [];
-
-    vscode.window.tabGroups.all.forEach(group => {
-      group.tabs.forEach((tab, tabIndex) => {
-        if (tab.input instanceof vscode.TabInputText) {
-          allTabs.push(this.convertToSideTab(tab, tabIndex));
-        }
+    for (const group of vscode.window.tabGroups.all) {
+      group.tabs.forEach((tab, idx) => {
+        const st = this.convertToSideTab(tab, idx);
+        if (st) { allTabs.push(st); }
       });
-    });
-
+    }
     this.stateService.replaceTabs(allTabs);
   }
 
-  /** Convert a native VS Code Tab into our SideTab model. */
-  private convertToSideTab(tab: vscode.Tab, index?: number): SideTab {
-    const input = tab.input as vscode.TabInputText;
-    const uri = input.uri;
-    const fileName = path.basename(uri.fsPath);
+  /* ------------------------------------------------------------------ */
+  /*  Active-tab tracker                                                 */
+  /* ------------------------------------------------------------------ */
+
+  private updateActiveTab(activeUri: vscode.Uri): void {
+    const activeStr = activeUri.toString();
+
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const st = this.convertToSideTab(tab);
+        if (!st) { continue; }
+
+        const existing = this.stateService.getTab(st.metadata.id);
+        if (!existing) { continue; }
+
+        const isNowActive = st.metadata.uri?.toString() === activeStr;
+        if (existing.state.isActive !== isNowActive) {
+          existing.state.isActive = isNowActive;
+          this.stateService.updateTabSilent(existing);
+        }
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Convert native → SideTab                                           */
+  /* ------------------------------------------------------------------ */
+
+  private convertToSideTab(tab: vscode.Tab, index?: number): SideTab | null {
+    let uri         : vscode.Uri | undefined;
+    let label       : string;
+    let description : string | undefined;
+    let tooltip     : string;
+    let fileType    : string = '';
+    let tabType     : SideTabType = 'file';
+
+    if (tab.input instanceof vscode.TabInputText) {
+      uri         = tab.input.uri;
+      label       = path.basename(uri.fsPath);
+      description = vscode.workspace.asRelativePath(uri);
+      tooltip     = uri.fsPath;
+      fileType    = path.extname(uri.fsPath);
+      tabType     = 'file';
+    } else if (tab.input instanceof vscode.TabInputWebview) {
+      // No URI — webview tabs (Settings, Extensions, Welcome…)
+      uri         = undefined;
+      label       = tab.label;
+      description = undefined;
+      tooltip     = tab.label;
+      tabType     = 'webview';
+    } else if (tab.input instanceof vscode.TabInputCustom) {
+      uri         = tab.input.uri;
+      label       = path.basename(uri.fsPath) || tab.label || 'Custom';
+      description = vscode.workspace.asRelativePath(uri);
+      tooltip     = uri.fsPath;
+      fileType    = path.extname(uri.fsPath);
+      tabType     = 'custom';
+    } else if (tab.input instanceof vscode.TabInputNotebook) {
+      uri         = tab.input.uri;
+      label       = path.basename(uri.fsPath);
+      description = vscode.workspace.asRelativePath(uri);
+      tooltip     = uri.fsPath;
+      fileType    = path.extname(uri.fsPath);
+      tabType     = 'notebook';
+    } else {
+      return null;
+    }
+
+    const viewColumn = tab.group.viewColumn;
 
     const metadata: SideTabMetadata = {
-      id: this.generateId(uri, tab.group.viewColumn),
+      id: this.generateId(label, uri, viewColumn, tabType),
       uri,
-      label: fileName,
-      description: vscode.workspace.asRelativePath(uri),
-      tooltip: uri.fsPath,
-      fileType: path.extname(uri.fsPath),
+      label,
+      description,
+      tooltip,
+      fileType,
+      tabType,
     };
 
     const state: SideTabState = {
-      isActive: tab.isActive,
-      isDirty: tab.isDirty,
-      isPinned: tab.isPinned,
-      isPreview: tab.isPreview,
-      groupId: tab.group.viewColumn,
-      viewColumn: tab.group.viewColumn,
-      indexInGroup: index ?? 0,
+      isActive:       tab.isActive,
+      isDirty:        tab.isDirty,
+      isPinned:       tab.isPinned,
+      isPreview:      tab.isPreview,
+      groupId:        viewColumn,
+      viewColumn,
+      indexInGroup:   index ?? 0,
       lastAccessTime: Date.now(),
     };
 
     return new SideTab(metadata, state);
   }
 
-  private generateId(uri: vscode.Uri, viewColumn: vscode.ViewColumn): string {
-    return `${uri.toString()}-${viewColumn}`;
+  /** Stable, unique ID for a tab.  URI-based for files, label-based for webviews. */
+  private generateId(
+    label: string,
+    uri: vscode.Uri | undefined,
+    viewColumn: vscode.ViewColumn,
+    tabType: SideTabType,
+  ): string {
+    if (uri) {
+      return `${uri.toString()}-${viewColumn}`;
+    }
+    // Webview tabs have no URI — use a sanitised label
+    const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    return `${tabType}:${safe}-${viewColumn}`;
   }
 
   dispose(): void {
