@@ -2,17 +2,17 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 /** Immutable metadata describing a tab's file. */
-export interface SideTabMetadata {
+export type SideTabMetadata = {
   id: string;
   uri: vscode.Uri;
   label: string;
   description?: string;
   tooltip?: string;
   fileType: string;
-}
+};
 
 /** Mutable runtime state of a tab. */
-export interface SideTabState {
+export type SideTabState = {
   isActive: boolean;
   isDirty: boolean;
   isPinned: boolean;
@@ -23,17 +23,17 @@ export interface SideTabState {
   scmStatus?: 'modified' | 'untracked' | 'staged' | 'clean';
   copilotEdited?: boolean;
   lastAccessTime: number;
-}
+};
 
 /** Feature flags that control which actions are available on a tab. */
-export interface SideTabCapabilities {
+export type SideTabCapabilities = {
   canClose: boolean;
   canPin: boolean;
   canReveal: boolean;
   canAddToChat: boolean;
   canCompare: boolean;
   canMove: boolean;
-}
+};
 
 const DEFAULT_CAPABILITIES: SideTabCapabilities = {
   canClose: true,

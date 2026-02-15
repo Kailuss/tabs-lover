@@ -37,14 +37,14 @@ export const STYLE_CONSTANTS = {
 } as const;
 
 /** Configuration shape for tabsLover settings */
-export interface TabsLoverConfiguration {
+export type TabsLoverConfiguration = {
   showFilePath: boolean;
   tabHeight: number;
   iconSize: number;
   enableHoverActions: boolean;
   showStateIcons: boolean;
   enableDragDrop: boolean;
-}
+};
 
 /**
  * Reads the current tabsLover configuration from workspace settings.
