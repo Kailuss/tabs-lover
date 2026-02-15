@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 export const STYLE_CONSTANTS = {
   // Tab dimensions
-  TAB_HEIGHT: 28,
+  TAB_HEIGHT: 40,
   TAB_ICON_SIZE: 16,
   TAB_PADDING_LEFT: 8,
   TAB_PADDING_RIGHT: 4,
