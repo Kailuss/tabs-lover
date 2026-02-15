@@ -1,403 +1,116 @@
-# Tabs Lover - Guía de Implementación Completa
+# Tabs Lover — Quick implementation guide
 
-Esta guía te llevará paso a paso desde la creación del proyecto hasta tener una extensión funcional de Tabs Lover para VS Code.
-
----
-
-## 📋 Tabla de Contenidos
-
-1. [Preparación del Proyecto](#1-preparación-del-proyecto) HECHO
-2. [Estructura del Proyecto](#2-estructura-del-proyecto)
-3. [Configuración Inicial](#3-configuración-inicial)
-4. [Implementación por Fases](#4-implementación-por-fases)
-5. [Testing y Debugging](#5-testing-y-debugging)
-6. [Packaging y Distribución](#6-packaging-y-distribución)
+A compact, English version of the original instructions. Focus: minimal steps to run, test and extend the extension.
 
 ---
 
-## 1. Preparación del Proyecto (HECHO)
+## Quick start ✅
 
-### 1.1 Requisitos Previos
+- Install dependencies and build:
+
+  ```bash
+  npm install
+  npm run compile
+  ```
+
+- Run in VS Code (development): press F5.
+- Run tests:
+
+  ```bash
+  npm test
+  ```
+
+---
+
+## Short project layout
+
+src/
+- `extension.ts` — entry
+- `providers/` — TreeDataProvider
+- `models/` — SideTab, groups, TreeItem
+- `services/` — state, sync, icons, theme, Copilot, (optional) drag&drop
+- `commands/` — register commands
+- `utils/` — logger/helpers
+
+Other: `package.json`, `.vscode/launch.json`, `test/`.
+
+---
+
+## Key files (one line)
+
+- `TabStateService` — in-memory state + events
+- `TabSyncService` — mirror VS Code Tab API -> state
+- `TabsLoverProvider` — Tree view UI
+- `SideTab` / `TabTreeItem` — models + TreeItem
+- `CopilotService` — optional Copilot Chat helpers
+
+---
+
+## Features / commands (high-level)
+
+- Open / Close / Close Others / Close Right / Pin / Unpin
+- Copy path / Copy file contents / Compare with active
+- Add to Copilot Chat (if installed)
+- Move between groups, refresh, view grouping
+
+---
+
+## Config (important keys)
+
+- `tabsLover.showFilePath` (bool)
+- `tabsLover.tabHeight` (number)
+- `tabsLover.iconSize` (number)
+- `tabsLover.enableHoverActions` (bool)
+- `tabsLover.enableDragDrop` (bool, experimental)
+
+Set via workspace/user settings.
+
+---
+
+## Implementation phases (short)
+
+1) MVP: models, sync service, provider, commands — validate basic UX.
+2) Tests & polish: unit tests, context keys, config options.
+3) Optional: drag & drop UI + sync logic (experimental).
+
+---
+
+## Run & debug
+
+- Build: `npm run compile`
+- Watch: `npm run watch`
+- Tests: `npm test`
+- Debug: F5 (use `.vscode/launch.json`)
+
+---
+
+## Package & publish
 
 ```bash
-# Node.js >= 18.x
-node --version
-
-# npm >= 9.x
-npm --version
-
-# VS Code >= 1.85.0
-code --version
-````
-
-### 1.2 Crear el Proyecto
-
-```bash
-# Instalar generador de extensiones (si no lo tienes)
-npm install -g yo generator-code
-
-# Generar proyecto
-npx --package yo --package generator-code -- yo code
-
-# Opciones a seleccionar:
-# ? What type of extension do you want to create? New Extension (TypeScript)
-# ? What's the name of your extension? Tabs Lover
-# ? What's the identifier of your extension? tabs-lover
-# ? What's the description of your extension? Vertical tabs panel with advanced features
-# ? Initialize a git repository? Yes
-# ? Which package manager to use? npm
-
-# Entrar al directorio
-cd tabs-lover
-
-# Instalar dependencias
-npm install
-```
-
-### 1.3 Dependencias Adicionales
-
-```bash
-# Para manejo de UUID (opcional, pero recomendado)
-npm install uuid
-npm install --save-dev @types/uuid
-
-# Para testing
-npm install --save-dev @vscode/test-electron mocha @types/mocha chai @types/chai
+npm run compile
+vsce package
+code --install-extension tabs-lover-*.vsix
 ```
 
 ---
 
-## 2. Estructura del Proyecto
+## Troubleshooting (quick)
 
-Crear la siguiente estructura de carpetas y archivos:
-
-```
-tabs-lover/
-├── src/
-│   ├── extension.ts                    # ✅ Entry point
-│   ├── constants/
-│   │   ├── icons.ts                    # ✅ Product icons y ThemeIcons
-│   │   └── styles.ts                   # ✅ Constantes de estilo
-│   ├── models/
-│   │   ├── SideTab.ts                  # ✅ Clase principal SideTab
-│   │   ├── SideTabGroup.ts             # ✅ Modelo de grupo
-│   │   └── TabTreeItem.ts              # ✅ TreeItem para TreeView
-│   ├── services/
-│   │   ├── TabStateService.ts          # ✅ Estado centralizado
-│   │   ├── TabSyncService.ts           # ✅ Sincronización con VS Code
-│   │   ├── TabIconManager.ts           # ✅ Gestión de iconos (YA PROPORCIONADO)
-│   │   ├── ThemeService.ts             # ✅ Manejo de temas
-│   │   ├── CopilotService.ts           # ✅ Integración con Copilot
-│   │   └── DragDropController.ts       # ✅ Drag & drop (Fase 3)
-│   ├── providers/
-│   │   └── TabsLoverProvider.ts         # ✅ TreeDataProvider principal
-│   ├── commands/
-│   │   ├── tabCommands.ts              # ✅ Comandos de tabs (close, pin, etc.)
-│   │   ├── copilotCommands.ts          # ✅ Comandos de Copilot
-│   │   └── navigationCommands.ts       # ✅ Comandos de navegación
-│   └── utils/
-│       ├── logger.ts                   # ✅ Logging
-│       └── helpers.ts                  # ✅ Funciones auxiliares
-├── resources/
-│   └── icons/                          # Iconos propios de la extensión (opcional)
-├── test/
-│   └── suite/
-│       └── extension.test.ts
-├── .vscode/
-│   ├── launch.json                     # Debug configuration
-│   └── tasks.json
-├── package.json                        # ✅ Configuración de la extensión
-├── tsconfig.json
-└── README.md
-```
+- Icons missing → ensure `resourceUri` set on TreeItem.
+- Extension not activating → check `activationEvents` in `package.json`.
+- Commands missing → verify `menus.when` clauses and `contributes.commands`.
+- Copilot features not working → install `github.copilot-chat`.
 
 ---
 
-## 3. Configuración Inicial
+## Links & resources
 
-### 3.1 package.json - Configuración Completa
-
-Reemplaza el contenido de `package.json`:
-
-```json
-{
-  "name": "tabs-lover",
-  "displayName": "Tabs Lover",
-  "description": "Vertical tabs panel with advanced features",
-  "version": "0.1.0",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "main": "./out/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "tabsLover",
-          "title": "Tabs Lover",
-          "icon": "$(list-tree)"
-        }
-      ]
-    },
-    "views": {
-      "tabsLover": [
-        {
-          "id": "tabsLover",
-          "name": "Open Tabs",
-          "icon": "$(list-tree)",
-          "contextualTitle": "Tabs Lover"
-        }
-      ]
-    },
-    "commands": [
-      {
-        "command": "tabsLover.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "tabsLover.openTab",
-        "title": "Open Tab"
-      },
-      {
-        "command": "tabsLover.closeTab",
-        "title": "Close",
-        "icon": "$(close)"
-      },
-      {
-        "command": "tabsLover.closeOthers",
-        "title": "Close Others"
-      },
-      {
-        "command": "tabsLover.closeToRight",
-        "title": "Close to the Right"
-      },
-      {
-        "command": "tabsLover.closeAll",
-        "title": "Close All"
-      },
-      {
-        "command": "tabsLover.pinTab",
-        "title": "Pin",
-        "icon": "$(pin)"
-      },
-      {
-        "command": "tabsLover.unpinTab",
-        "title": "Unpin",
-        "icon": "$(pinned)"
-      },
-      {
-        "command": "tabsLover.addToCopilotChat",
-        "title": "Add to Copilot Chat",
-        "icon": "$(sparkle)"
-      },
-      {
-        "command": "tabsLover.addMultipleToCopilotChat",
-        "title": "Add Multiple to Copilot Chat..."
-      },
-      {
-        "command": "tabsLover.copyRelativePath",
-        "title": "Copy Relative Path"
-      },
-      {
-        "command": "tabsLover.copyFileContents",
-        "title": "Copy File Contents"
-      },
-      {
-        "command": "tabsLover.compareWithActive",
-        "title": "Compare with Active File"
-      },
-      {
-        "command": "tabsLover.moveToGroup",
-        "title": "Move to Group..."
-      },
-      {
-        "command": "tabsLover.revealInExplorer",
-        "title": "Reveal in Explorer"
-      }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "tabsLover.refresh",
-          "when": "view == tabsLover",
-          "group": "navigation"
-        },
-        {
-          "command": "tabsLover.addMultipleToCopilotChat",
-          "when": "view == tabsLover && tabsLover.copilotAvailable",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "tabsLover.closeTab",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "inline@1"
-        },
-        {
-          "command": "tabsLover.pinTab",
-          "when": "view == tabsLover && viewItem =~ /tab/ && viewItem !~ /pinned/",
-          "group": "inline@2"
-        },
-        {
-          "command": "tabsLover.unpinTab",
-          "when": "view == tabsLover && viewItem =~ /pinned/",
-          "group": "inline@2"
-        },
-        {
-          "command": "tabsLover.addToCopilotChat",
-          "when": "view == tabsLover && viewItem =~ /canAddToChat/ && tabsLover.copilotAvailable",
-          "group": "inline@3"
-        },
-        {
-          "command": "tabsLover.closeTab",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "1_close@1"
-        },
-        {
-          "command": "tabsLover.closeOthers",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "1_close@2"
-        },
-        {
-          "command": "tabsLover.closeToRight",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "1_close@3"
-        },
-        {
-          "command": "tabsLover.closeAll",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "1_close@4"
-        },
-        {
-          "command": "tabsLover.pinTab",
-          "when": "view == tabsLover && viewItem =~ /tab/ && viewItem !~ /pinned/",
-          "group": "2_state@1"
-        },
-        {
-          "command": "tabsLover.unpinTab",
-          "when": "view == tabsLover && viewItem =~ /pinned/",
-          "group": "2_state@2"
-        },
-        {
-          "command": "tabsLover.addToCopilotChat",
-          "when": "view == tabsLover && viewItem =~ /canAddToChat/ && tabsLover.copilotAvailable",
-          "group": "3_copilot@1"
-        },
-        {
-          "command": "tabsLover.addMultipleToCopilotChat",
-          "when": "view == tabsLover && viewItem =~ /tab/ && tabsLover.copilotAvailable",
-          "group": "3_copilot@2"
-        },
-        {
-          "command": "tabsLover.compareWithActive",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "4_compare@1"
-        },
-        {
-          "command": "tabsLover.moveToGroup",
-          "when": "view == tabsLover && viewItem =~ /tab/ && tabsLover.hasMultipleGroups",
-          "group": "5_move@1"
-        },
-        {
-          "command": "tabsLover.revealInExplorer",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "6_reveal@1"
-        },
-        {
-          "command": "tabsLover.copyRelativePath",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "7_copy@1"
-        },
-        {
-          "command": "tabsLover.copyFileContents",
-          "when": "view == tabsLover && viewItem =~ /tab/",
-          "group": "7_copy@2"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "Tabs Lover",
-      "properties": {
-        "tabsLover.showFilePath": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show file path below tab name"
-        },
-        "tabsLover.tabHeight": {
-          "type": "number",
-          "default": 28,
-          "minimum": 22,
-          "maximum": 48,
-          "description": "Height of each tab in pixels"
-        },
-        "tabsLover.iconSize": {
-          "type": "number",
-          "default": 16,
-          "minimum": 12,
-          "maximum": 24,
-          "description": "Size of file icons in pixels"
-        },
-        "tabsLover.enableHoverActions": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show pin/close icons on hover"
-        },
-        "tabsLover.showStateIcons": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show dirty/edited indicators"
-        },
-        "tabsLover.enableDragDrop": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable experimental drag & drop reordering (may cause tabs to lose state)"
-        }
-      }
-    }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "@types/node": "18.x",
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
-    "eslint": "^8.54.0",
-    "typescript": "^5.3.0"
-  }
-}
-```
+- VS Code API: https://code.visualstudio.com/api
+- TreeView guide: https://code.visualstudio.com/api/extension-guides/tree-view
 
 ---
 
-## 4. Implementación por Fases
-
-### FASE 1: MVP Funcional (Días 1-3)
-
-#### Día 1: Modelos y Constantes
-
-**Archivo: `src/constants/icons.ts`**
-
-```typescript
-import * as vscode from 'vscode';
-
-export const PRODUCT_ICONS = {
-  // Estados de tab
-  modified: new vscode.ThemeIcon('circle-filled'),
+Notes: this file was shortened and translated to English. Ask me to expand any section or restore details from the original Spanish version.
   pinned: new vscode.ThemeIcon('pinned'),
   close: new vscode.ThemeIcon('close'),
   
