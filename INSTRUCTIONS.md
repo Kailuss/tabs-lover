@@ -6,7 +6,7 @@ Esta guía te llevará paso a paso desde la creación del proyecto hasta tener u
 
 ## 📋 Tabla de Contenidos
 
-1. [Preparación del Proyecto](#1-preparación-del-proyecto)
+1. [Preparación del Proyecto](#1-preparación-del-proyecto) HECHO
 2. [Estructura del Proyecto](#2-estructura-del-proyecto)
 3. [Configuración Inicial](#3-configuración-inicial)
 4. [Implementación por Fases](#4-implementación-por-fases)
@@ -15,7 +15,7 @@ Esta guía te llevará paso a paso desde la creación del proyecto hasta tener u
 
 ---
 
-## 1. Preparación del Proyecto
+## 1. Preparación del Proyecto (HECHO)
 
 ### 1.1 Requisitos Previos
 
