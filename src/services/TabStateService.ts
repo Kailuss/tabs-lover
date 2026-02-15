@@ -1,25 +1,24 @@
-import * as vscode from 'vscode';
-import { SideTab } from '../models/SideTab';
+import * as vscode      from 'vscode';
+import { SideTab }      from '../models/SideTab';
 import { SideTabGroup } from '../models/SideTabGroup';
 
 /**
- * In-memory state store for tabs and groups.
- * Emits `onDidChangeState` for structural changes (refresh needed).
- * Emits `onDidChangeStateSilent` for visual-only changes (no refresh).
+ * Almacén en memoria de pestañas y grupos — la "fuente de la verdad" para la UI.
+ * - `onDidChangeState`: cuando cambia la estructura (abrir/cerrar/mover pestañas).
+ * - `onDidChangeStateSilent`: cambios ligeros (ej. solo `isActive`) que no necesitan
+ *   una recarga completa del webview.
  */
 export class TabStateService {
-  private tabs: Map<string, SideTab> = new Map();
-  private groups: Map<number, SideTabGroup> = new Map();
+  private tabs   : Map<string, SideTab>      = new Map();
+  private groups : Map<number, SideTabGroup> = new Map();
+  private _onDidChangeState                  = new vscode.EventEmitter<void>();
+  readonly onDidChangeState                  = this._onDidChangeState.event;
+  private _onDidChangeStateSilent            = new vscode.EventEmitter<void>();
+  readonly onDidChangeStateSilent            = this._onDidChangeStateSilent.event;
 
-  private _onDidChangeState = new vscode.EventEmitter<void>();
-  readonly onDidChangeState = this._onDidChangeState.event;
+  //- Tab management
 
-  private _onDidChangeStateSilent = new vscode.EventEmitter<void>();
-  readonly onDidChangeStateSilent = this._onDidChangeStateSilent.event;
-
-  // === Tab management ===
-
-  /** Add a tab (or update if it already exists in the group). */
+  // Add a tab (or update if it already exists in the group).
   addTab(tab: SideTab): void {
     this.tabs.set(tab.metadata.id, tab);
 
@@ -33,7 +32,7 @@ export class TabStateService {
     this._onDidChangeState.fire();
   }
 
-  /** Remove a tab by id and clean it from its group. */
+  // Remove a tab by id and clean it from its group.
   removeTab(id: string): void {
     const tab = this.tabs.get(id);
     if (tab) {
@@ -47,7 +46,7 @@ export class TabStateService {
     }
   }
 
-  /** Update a tab in-place (both the map and its group array). */
+  // Update a tab in-place (both the map and its group array).
   updateTab(tab: SideTab): void {
     this.tabs.set(tab.metadata.id, tab);
 
@@ -62,7 +61,7 @@ export class TabStateService {
     this._onDidChangeState.fire();
   }
 
-  /** Update a tab without triggering tree refresh (for silent state updates like isActive). */
+  // Update a tab without triggering tree refresh (for silent state updates like isActive).
   updateTabSilent(tab: SideTab): void {
     this.tabs.set(tab.metadata.id, tab);
 
@@ -89,7 +88,7 @@ export class TabStateService {
     return group ? [...group.tabs] : [];
   }
 
-  /** Replace all tabs with a new set (used during full sync). */
+  // Replace all tabs with a new set (used during full sync).
   replaceTabs(tabs: SideTab[]): void {
     this.tabs.clear();
 
@@ -101,7 +100,7 @@ export class TabStateService {
     tabs.forEach(tab => this.addTab(tab));
   }
 
-  // === Group management ===
+  //- Group management
 
   addGroup(group: SideTabGroup): void {
     this.groups.set(group.id, group);
@@ -128,9 +127,9 @@ export class TabStateService {
     this._onDidChangeState.fire();
   }
 
-  // === Search ===
+  //- Search
 
-  /** Find a tab by its URI, optionally scoped to a group. */
+  // Buscar una pestaña por su URI; opcionalmente limitar al grupo indicado.
   findTabByUri(uri: vscode.Uri, groupId?: number): SideTab | undefined {
     const uriString = uri.toString();
 
@@ -145,7 +144,7 @@ export class TabStateService {
     return undefined;
   }
 
-  // === Utilities ===
+  //- Utilities
 
   clear(): void {
     this.tabs.clear();

@@ -7,18 +7,13 @@ import { SideTabGroup }              from '../models/SideTabGroup';
 import { getConfiguration }          from '../constants/styles';
 
 /**
- * WebviewViewProvider that renders open tabs as a fully styled HTML list.
- *
- * Supports:
- * - 40 px row height (configurable via `tabsLover.tabHeight`)
- * - 4 px accent-coloured left border on the active tab
- * - File name + relative path on separate lines (left-aligned)
- * - Hover actions: pin/unpin · add-to-chat · close
- * - isDirty dot on the right, replaced by close button on hover
- * - Stable layout — no lateral shifts
- * - Real file-type icons from the active icon theme (never emojis)
+ * Proveedor del Webview que dibuja la lista vertical de pestañas.
+ * ¿Qué hace, explicado fácil?
+ * - Toma el estado interno y lo convierte en HTML/CSS para mostrar la UI.
+ * - Muestra nombre, ruta, icono y botones de acción; envía eventos al host.
+ * - Usa iconos en base64 para evitar parpadeos y depende del `TabStateService`.
  */
-export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
+export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider { 
   public static readonly viewType = 'tabsLover';
 
   private _view?: vscode.WebviewView;
@@ -57,7 +52,10 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     this.refresh();
   }
 
-  /** Rebuild the full HTML and push it into the webview (debounced). */
+  /**
+   * Reconstruye el HTML completo y lo envía al webview.
+   * Pequeño debounce para evitar repintados repetidos cuando cambian muchos eventos.
+   */
   refresh(): void {
     if (!this._view || this._refreshScheduled) { return; }
     this._refreshScheduled = true;
@@ -436,7 +434,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   /*  Helpers                                                            */
   /* ------------------------------------------------------------------ */
 
-  /** Simple HTML-entity escaper. */
+  /** Escapa caracteres especiales para insertar texto de forma segura en HTML. */
   private esc(s: string): string {
     return s
       .replace(/&/g, '&amp;')
@@ -446,8 +444,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Resolves the file icon from the active icon theme via TabIconManager.
-   * Returns an `<img>` tag with a base64 data URI, or an SVG fallback — never an emoji.
+   * Obtiene el HTML del icono para un archivo (image `data:` base64 o SVG de respaldo).
+   * Nunca usamos emojis: preferimos los iconos del tema para mantener coherencia visual.
    */
   private async getIconHtml(tab: SideTab): Promise<string> {
     const fileName = tab.metadata.label;
@@ -464,7 +462,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         return `<img src="${cached}" alt="" />`;
       }
 
-      // Resolve from the icon theme (async, reads disk once then caches)
+      // Resolver desde el tema de iconos (async — lee disco una sola vez y cachea)
       const base64 = await this.iconManager.getFileIconAsBase64(
         fileName,
         this.context,
@@ -474,11 +472,11 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         return `<img src="${base64}" alt="" />`;
       }
     } catch (error) {
-      // Icon resolution failed — use fallback
+      // Falló la resolución del icono — usar el fallback
       console.warn(`[TabsLover] Icon resolution failed for ${fileName}:`, error);
     }
 
-    // Fallback: a minimal inline SVG file icon (no emoji)
+    // Fallback: SVG inline mínimo para el icono de archivo (sin emojis)
     return this.getFallbackIcon();
   }
 

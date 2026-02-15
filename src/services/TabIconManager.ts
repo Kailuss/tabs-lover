@@ -1,12 +1,14 @@
-// The backend only handles data and mapping logic, never absolute paths or HTML.
-// Builds and exposes the iconMap (data only, not paths).
+// Solo gestiona datos y la lógica de mapeo — no devuelve rutas absolutas ni HTML.
+// Construye y expone un `iconMap` (solo datos) que el webview usa para resolver iconos.
 
 import * as vscode from 'vscode';
 import * as fsp    from 'fs/promises';
 import * as path   from 'path';
 
 /**
- * Manages loading and caching of file icons based on the active icon theme.
+ * Resuelve y cachea iconos de archivo según el tema de iconos activo.
+ * En términos sencillos: encuentra el icono adecuado (por nombre/ext/idioma)
+ * y devuelve una imagen en `data:` base64 lista para el webview.
  */
 export class TabIconManager {
   private _iconCache         : Map<string, string> = new Map();
@@ -19,10 +21,10 @@ export class TabIconManager {
   private _configListener    : vscode.Disposable | undefined;
 
   /**
-   * Initialises the icon manager and sets up listeners.
-   * Must be called once during extension activation.
+   * Inicializa el gestor de iconos y registra listeners.
+   * Llamar una vez desde `activate()`; prepara la tabla de búsqueda del tema.
    */
-  public initialize(context: vscode.ExtensionContext): void {
+  public initialize(context: vscode.ExtensionContext): void { 
     this._configListener = vscode.workspace.onDidChangeConfiguration(async e => {
       if (e.affectsConfiguration('workbench.iconTheme')) {
         this.clearCache();
@@ -36,70 +38,72 @@ export class TabIconManager {
   }
 
   /**
-   * Builds the icon map based on the active icon theme.
-   * @param context The extension context
-   * @param forceRebuild Force rebuild even if the theme hasn't changed
+   * Construye una tabla (mapa) que permite encontrar el icono correcto
+   * para un nombre o extensión según el tema activo. No carga los iconos
+   * en base64 aquí; solo analiza el JSON del tema.
    */
   public async buildIconMap(
     context: vscode.ExtensionContext,
     forceRebuild: boolean = false
   ): Promise<void> {
     try {
-      const config = vscode.workspace.getConfiguration();
+      const config    = vscode.workspace.getConfiguration();
       const iconTheme = config.get<string>('workbench.iconTheme');
 
+      // Si no hay tema de iconos configurado, limpiar el mapa y salir.
       if (!iconTheme) {
-        this._iconMap = {};
+        this._iconMap     = {};
         this._iconThemeId = '';
         return;
       }
 
+      // Si el tema no cambió y ya tenemos el mapa, no volver a reconstruir.
       if (this._iconThemeId === iconTheme && this._iconMap && !forceRebuild) {
         return;
       }
 
-      let ext = this.findIconThemeExtension(iconTheme);
-      let themeJson: any = null;
+      let ext               = this.findIconThemeExtension(iconTheme);
+      let themeJson: any    = null;
       let themePath: string = '';
-      let themeId = iconTheme;
+      let themeId           = iconTheme;
 
-      // Fallback to Seti if the configured theme is not found
+      // Fallback a 'vs-seti' si no encontramos el tema configurado
       if (!ext) {
         ext = this.findIconThemeExtension('vs-seti');
         themeId = 'vs-seti';
 
         if (!ext) {
-          this._iconMap = {};
+          this._iconMap     = {};
           this._iconThemeId = iconTheme;
           return;
         }
       }
 
-      const themeContribution = ext.packageJSON.contributes.iconThemes.find(
-        (t: any) => t.id === themeId
-      );
+      // Buscar la entrada del tema en el package.json de la extensión
+      const themeContribution = ext.packageJSON.contributes.iconThemes.find( (t: any) => t.id === themeId );
       if (!themeContribution) {
-        this._iconMap = {};
+        this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
       }
 
+      // Resolver la ruta absoluta al archivo JSON del tema
       themePath = path.join(ext.extensionPath, themeContribution.path);
 
       try {
         await fsp.access(themePath);
       } catch {
-        this._iconMap = {};
+        this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
       }
 
       try {
         const themeContent = await fsp.readFile(themePath, 'utf8');
-        themeJson = JSON.parse(themeContent);
+        themeJson          = JSON.parse(themeContent);
       } catch (err) {
         console.error('[TabsLover] Error parsing icon theme JSON:', err);
-        this._iconMap = {};
+        this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
       }
@@ -110,21 +114,21 @@ export class TabIconManager {
 
       const iconMap: Record<string, string> = {};
 
-      // Map file names → icon ids
+      // Mapear nombres de archivo → id de icono
       if (themeJson.fileNames) {
         Object.entries(themeJson.fileNames).forEach(([name, value]) => {
           iconMap[`name:${name.toLowerCase()}`] = value as string;
         });
       }
 
-      // Map file extensions → icon ids
+      // Mapear extensiones de archivo → id de icono
       if (themeJson.fileExtensions) {
         Object.entries(themeJson.fileExtensions).forEach(([fileExt, value]) => {
           iconMap[`ext:${fileExt.toLowerCase()}`] = value as string;
         });
       }
 
-      // Map language ids → icon ids
+      // Mapear ids de lenguaje → id de icono
       if (themeJson.languageIds) {
         Object.entries(themeJson.languageIds).forEach(([lang, value]) => {
           iconMap[`lang:${lang.toLowerCase()}`] = value as string;
@@ -138,7 +142,10 @@ export class TabIconManager {
     }
   }
 
-  /** Finds the VS Code extension that provides a given icon theme. */
+  /**
+   * Busca la extensión que declara el tema de iconos activo.
+   * Devuelve `undefined` si no se encuentra (usamos un fallback entonces).
+   */
   private findIconThemeExtension(themeId: string): vscode.Extension<any> | undefined {
     return vscode.extensions.all.find(e => {
       try {
@@ -154,7 +161,8 @@ export class TabIconManager {
   }
 
   /**
-   * Returns the icon for a file as a base64 data URI.
+   * Devuelve el icono para `fileName` como una URI `data:` base64 lista para `<img>`.
+   * Uso: la vista inserta directamente este string en el `src` de la etiqueta.
    */
   public async getFileIconAsBase64(
     fileName: string,
@@ -199,15 +207,15 @@ export class TabIconManager {
           let inferredLanguageId = languageId;
           if (!inferredLanguageId) {
             const extensionToLanguageMap: Record<string, string> = {
-              js: 'javascript',
-              ts: 'typescript',
-              jsx: 'javascriptreact',
-              tsx: 'typescriptreact',
+              js:   'javascript',
+              ts:   'typescript',
+              jsx:  'javascriptreact',
+              tsx:  'typescriptreact',
               json: 'json',
-              md: 'markdown',
-              py: 'python',
+              md:   'markdown',
+              py:   'python',
               html: 'html',
-              css: 'css',
+              css:  'css',
             };
 
             inferredLanguageId = extensionToLanguageMap[extName];
@@ -220,7 +228,7 @@ export class TabIconManager {
           }
         }
 
-        // Fallback to default file icon
+        // Fallback al icono de archivo por defecto
         if (!iconId) {
           if (themeJson.iconDefinitions?.['_file']) {
             iconId = '_file';
@@ -291,8 +299,8 @@ export class TabIconManager {
     }
 
     const langMap: Record<string, string[]> = {
-      js: ['lang:javascript', 'ext:js'],
-      ts: ['lang:typescript', 'ext:ts'],
+      js:  ['lang:javascript', 'ext:js'],
+      ts:  ['lang:typescript', 'ext:ts'],
       jsx: ['lang:javascriptreact', 'ext:jsx'],
       tsx: ['lang:typescriptreact', 'ext:tsx'],
     };
@@ -403,10 +411,10 @@ export class TabIconManager {
     _fileName?: string
   ): Promise<string | undefined> {
     try {
-      const fileData = await fsp.readFile(iconPath);
+      const fileData   = await fsp.readFile(iconPath);
       const base64Data = fileData.toString('base64');
-      const isSvg = iconPath.toLowerCase().endsWith('.svg');
-      const mimeType = isSvg ? 'image/svg+xml' : 'image/png';
+      const isSvg      = iconPath.toLowerCase().endsWith('.svg');
+      const mimeType   = isSvg ? 'image/svg+xml' : 'image/png';
       return `data:${mimeType};base64,${base64Data}`;
     } catch (e) {
       console.error(`[TabsLover] Error reading icon from ${iconPath}:`, e);

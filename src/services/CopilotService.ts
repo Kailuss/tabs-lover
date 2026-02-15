@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { SideTab } from '../models/SideTab';
 
 /**
- * Optional integration with GitHub Copilot Chat.
- * Allows adding files to the chat context via commands or a clipboard fallback.
+ * Integración opcional con GitHub Copilot Chat.
+ * Explicación práctica: permite añadir archivos al contexto de chat desde la UI.
  */
 export class CopilotService {
   private copilotExtension?: vscode.Extension<unknown>;
@@ -12,14 +12,14 @@ export class CopilotService {
     this.copilotExtension = vscode.extensions.getExtension('github.copilot-chat');
   }
 
-  /** Returns true when the Copilot Chat extension is installed. */
+  /** Indica si la extensión GitHub Copilot Chat está disponible. */
   isAvailable(): boolean {
     return this.copilotExtension !== undefined;
   }
 
   /**
-   * Add a single file to Copilot Chat context.
-   * Falls back to a clipboard-based workflow if the direct command is unavailable.
+   * Añade un archivo al contexto de Copilot Chat.
+   * Si la integración directa no está disponible usa el portapapeles como alternativa.
    */
   async addFileToChat(uri: vscode.Uri | undefined): Promise<boolean> {
     if (!uri) {
@@ -41,6 +41,10 @@ export class CopilotService {
     }
   }
 
+  /**
+   * Alternativa cuando la API de Copilot no está disponible: copia una referencia
+   * `#file:ruta` al portapapeles y abre el chat para que el usuario la pegue.
+   */
   private async fallbackAddToChat(uri: vscode.Uri): Promise<boolean> {
     const relativePath = vscode.workspace.asRelativePath(uri);
 
@@ -63,7 +67,7 @@ export class CopilotService {
     return true;
   }
 
-  /** Show a QuickPick to select multiple files and add them to chat. */
+  /** Muestra un QuickPick para seleccionar varios archivos y añadirlos al chat. */
   async addMultipleFiles(tabs: SideTab[]): Promise<void> {
     const fileTabs = tabs.filter(t => t.metadata.uri);
     if (fileTabs.length === 0) {

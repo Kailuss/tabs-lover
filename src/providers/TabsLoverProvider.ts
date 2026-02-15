@@ -1,2 +1,2 @@
-// DEPRECATED — Replaced by TabsLoverWebviewProvider. Safe to delete.
-export {};
+// DEPRECADO — Reemplazado por `TabsLoverWebviewProvider`. Se puede eliminar.
+export {}; 

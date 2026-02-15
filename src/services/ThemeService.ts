@@ -8,7 +8,10 @@ export class ThemeService {
   private _onDidChangeTheme = new vscode.EventEmitter<void>();
   readonly onDidChangeTheme = this._onDidChangeTheme.event;
 
-  /** Register configuration listeners. Call once during activation. */
+  /**
+   * Registra listeners de configuración relacionados con temas e iconos.
+   * Llamar una vez durante la activación de la extensión.
+   */
   activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration(e => {

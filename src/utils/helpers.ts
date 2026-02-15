@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
 /**
- * Returns a generic ThemeIcon based on file extension.
- * Used only as a fallback when the icon theme cannot resolve an icon.
+ * Devuelve un `ThemeIcon` genérico según la extensión del archivo.
+ * Uso: únicamente como opción de reserva cuando el tema de iconos no encuentra uno.
  */
 export function getFileIcon(uri: vscode.Uri): vscode.ThemeIcon {
   const ext = uri.fsPath.split('.').pop()?.toLowerCase();
@@ -22,7 +22,7 @@ export function getFileIcon(uri: vscode.Uri): vscode.ThemeIcon {
 }
 
 /**
- * Formats a byte count into a human-readable string (B / KB / MB).
+ * Formatea un tamaño en bytes a una cadena legible (B / KB / MB).
  */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) {

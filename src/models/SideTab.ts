@@ -30,17 +30,17 @@ export interface SideTabState {
 }
 
 /**
- * Represents a single tab in the Tabs Lover sidebar.
- * Wraps VS Code tab data and exposes high-level actions.
-*/
+ * Representa una pestaña en la barra lateral de Tabs Lover.
+ * En pocas palabras: guarda la información que mostramos (nombre, ruta, icono)
+ * y ofrece métodos para las acciones que el usuario puede realizar (abrir, cerrar, pinear...).
+ */
 export class SideTab {
   constructor(
     public readonly metadata: SideTabMetadata,
     public state: SideTabState,
   ) {}
 
-  //:-->  Basic actions
-
+  //:--> Acciones básicas
   async close(): Promise<void> {
     const t = this.findNativeTab();
     if (t) { await vscode.window.tabGroups.close(t); }

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
 /**
- * Product icons used throughout the extension.
- * These reference VS Code's built-in codicons.
+ * Iconos "de producto" utilizados por la extensión.
+ * Referencian los `codicons` integrados de VS Code (p. ej. pin, close, refresh).
  */
 export const PRODUCT_ICONS = {
   // File states

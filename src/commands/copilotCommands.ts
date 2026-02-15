@@ -3,7 +3,7 @@ import { CopilotService } from '../services/CopilotService';
 import { TabStateService } from '../services/TabStateService';
 
 /**
- * Registers Copilot Chat–related commands.
+ * Registra comandos para añadir archivos al contexto de GitHub Copilot Chat.
  */
 export function registerCopilotCommands(
   context: vscode.ExtensionContext,

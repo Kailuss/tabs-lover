@@ -1,23 +1,24 @@
 import * as vscode from 'vscode';
 
 /**
- * Centralised logger that writes to a dedicated VS Code OutputChannel.
+ * Logger central que escribe en el canal de salida "Tabs Lover".
+ * Usar para mensajes importantes y errores (no para traza detallada).
  */
 export class Logger {
   private static outputChannel: vscode.OutputChannel;
 
-  /** Create the output channel. Call once during activation. */
+  /** Crea el canal de salida. Llamar una vez desde `activate()`. */
   static initialize(): void {
     this.outputChannel = vscode.window.createOutputChannel('Tabs Lover');
   }
 
-  /** Log an informational message with a timestamp. */
+  /** Registra un mensaje informativo con marca temporal. */
   static log(message: string): void {
     const timestamp = new Date().toISOString();
     this.outputChannel.appendLine(`[${timestamp}] ${message}`);
   }
 
-  /** Log an error with optional error object details. */
+  /** Registra un error; si hay objeto Error también escribe su stack. */
   static error(message: string, error?: unknown): void {
     this.log(`ERROR: ${message}`);
     if (error instanceof Error) {
@@ -28,8 +29,8 @@ export class Logger {
     }
   }
 
-  /** Reveal the output channel in the UI. */
+  /** Muestra el canal de salida en la UI. */
   static show(): void {
     this.outputChannel.show();
   }
-}
+} 

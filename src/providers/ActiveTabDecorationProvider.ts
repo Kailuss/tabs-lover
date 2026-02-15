@@ -1,2 +1,2 @@
-// DEPRECATED — No longer used. Safe to delete.
-export {};
+// DEPRECADO — Ya no se usa. Se puede eliminar.
+export {}; 

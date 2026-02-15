@@ -47,8 +47,8 @@ export type TabsLoverConfiguration = {
 };
 
 /**
- * Reads the current tabsLover configuration from workspace settings.
- * @returns Resolved configuration with defaults applied.
+ * Lee la configuración `tabsLover` del workspace y devuelve valores con los
+ * valores por defecto ya aplicados.
  */
 export function getConfiguration(): TabsLoverConfiguration {
   const config = vscode.workspace.getConfiguration('tabsLover');

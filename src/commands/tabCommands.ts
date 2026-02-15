@@ -2,9 +2,8 @@ import * as vscode from 'vscode';
 import { TabStateService } from '../services/TabStateService';
 
 /**
- * Registers all tab-related commands.
- * Commands receive a tab ID string from the webview,
- * or a SideTab directly from programmatic calls.
+ * Registra los comandos relacionados con pestañas (abrir, cerrar, mover, etc.).
+ * Normalmente reciben un ID de pestaña desde el webview y resuelven el `SideTab`.
  */
 export function registerTabCommands(
   context: vscode.ExtensionContext,

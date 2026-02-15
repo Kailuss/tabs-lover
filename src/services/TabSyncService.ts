@@ -1,19 +1,22 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { TabStateService } from './TabStateService';
+import * as vscode                                             from 'vscode';
+import * as path                                               from 'path';
+import { TabStateService }                                     from './TabStateService';
 import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../models/SideTab';
-import { createTabGroup } from '../models/SideTabGroup';
+import { createTabGroup }                                      from '../models/SideTabGroup';
 
 /**
- * Keeps the in-memory TabStateService in sync with VS Code's
- * native Tab API by listening to tab and group change events.
+ * Mantiene el estado interno de pestañas sincronizado con VS Code.
+ * En palabras sencillas: escucha los eventos del editor (abrir/cerrar/mover)
+ * y actualiza el `TabStateService` para que la UI muestre datos fiables.
+ * Esta capa solo transforma datos — no hace operaciones de disco pesadas.
  */
 export class TabSyncService {
   private disposables: vscode.Disposable[] = [];
 
   constructor(private stateService: TabStateService) {}
 
-  /** Register listeners and perform initial sync. */
+  /** Registra los listeners necesarios y realiza una sincronización inicial.
+   *  Resultado: el `TabStateService` queda poblado y listo para la UI. */
   activate(context: vscode.ExtensionContext): void {
     this.syncAll();
 
@@ -34,10 +37,7 @@ export class TabSyncService {
     context.subscriptions.push(...this.disposables);
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Event handlers                                                     */
-  /* ------------------------------------------------------------------ */
-
+  //: Manejadores de eventos (qué hacer cuando cambian las pestañas)
   private handleTabChanges(e: vscode.TabChangeEvent): void {
     for (const tab of e.opened) {
       const st = this.convertToSideTab(tab);
@@ -70,11 +70,8 @@ export class TabSyncService {
       existing.state.isPinned  = tab.isPinned;
       existing.state.isPreview = tab.isPreview;
 
-      if (onlyActive) {
-        this.stateService.updateTabSilent(existing);
-      } else {
-        this.stateService.updateTab(existing);
-      }
+      if (onlyActive) { this.stateService.updateTabSilent(existing); }
+      else            { this.stateService.updateTab(existing);       }
     }
   }
 
@@ -87,10 +84,7 @@ export class TabSyncService {
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Full sync                                                          */
-  /* ------------------------------------------------------------------ */
-
+  //: Sincronización completa (reconstruir todo el estado) 
   private syncAll(): void {
     for (const group of vscode.window.tabGroups.all) {
       this.stateService.addGroup(createTabGroup(group));
@@ -106,10 +100,7 @@ export class TabSyncService {
     this.stateService.replaceTabs(allTabs);
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Active-tab tracker                                                 */
-  /* ------------------------------------------------------------------ */
-
+  //: Seguimiento de la pestaña activa (actualiza solo isActive) 
   private updateActiveTab(activeUri: vscode.Uri): void {
     const activeStr = activeUri.toString();
 
@@ -130,10 +121,18 @@ export class TabSyncService {
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Convert native → SideTab                                           */
-  /* ------------------------------------------------------------------ */
-
+  /**
+   * Convierte una pestaña nativa de VS Code a nuestro modelo `SideTab`.
+   *
+   * Explicación simple:
+   * - Si es un archivo (texto, editor custom, notebook) recoge la `uri`, el nombre
+   *   del archivo, la ruta relativa y la extensión.
+   * - Si es una pestaña `webview` (Settings, Extensions, Welcome), NO crea una URI
+   *   falsa; deja `uri` sin definir y genera un id estable basado en la etiqueta.
+   * - El método solo transforma datos y devuelve un `SideTab` listo para la UI.
+   *
+   * Devuelve `SideTab` o `null` si el tipo de pestaña no es soportado.
+   */
   private convertToSideTab(tab: vscode.Tab, index?: number): SideTab | null {
     let uri         : vscode.Uri | undefined;
     let label       : string;
