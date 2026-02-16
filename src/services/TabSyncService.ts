@@ -3,6 +3,7 @@ import * as path                                               from 'path';
 import { TabStateService }                                     from './TabStateService';
 import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../models/SideTab';
 import { createTabGroup }                                      from '../models/SideTabGroup';
+import { formatFilePath }                                      from '../utils/helpers';
 
 /**
  * Mantiene el estado interno de pestañas sincronizado con VS Code.
@@ -62,7 +63,7 @@ export class TabSyncService {
       const onlyActive =
         existing.state.isDirty   === tab.isDirty   &&
         existing.state.isPinned  === tab.isPinned  &&
-        existing.state.isPreview === tab.isPreview  &&
+        existing.state.isPreview === tab.isPreview &&
         existing.state.isActive  !== tab.isActive;
 
       existing.state.isActive  = tab.isActive;
@@ -73,6 +74,10 @@ export class TabSyncService {
       if (onlyActive) { this.stateService.updateTabSilent(existing); }
       else            { this.stateService.updateTab(existing);       }
     }
+
+    // Sincronizar estado activo de todas las tabs del grupo afectado
+    // Esto es crucial para webview tabs que no disparan onDidChangeActiveTextEditor
+    this.syncActiveState();
   }
 
   private handleGroupChanges(e: vscode.TabGroupChangeEvent): void {
@@ -122,6 +127,28 @@ export class TabSyncService {
   }
 
   /**
+   * Sincroniza el estado isActive de todas las tabs con el estado real de VS Code.
+   * Esto es especialmente importante para webview tabs (Settings, Extensions, etc.)
+   * que no disparan onDidChangeActiveTextEditor.
+   */
+  private syncActiveState(): void {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const st = this.convertToSideTab(tab);
+        if (!st) { continue; }
+
+        const existing = this.stateService.getTab(st.metadata.id);
+        if (!existing) { continue; }
+
+        if (existing.state.isActive !== tab.isActive) {
+          existing.state.isActive = tab.isActive;
+          this.stateService.updateTabSilent(existing);
+        }
+      }
+    }
+  }
+
+  /**
    * Convierte una pestaña nativa de VS Code a nuestro modelo `SideTab`.
    *
    * Explicación simple:
@@ -144,34 +171,36 @@ export class TabSyncService {
     if (tab.input instanceof vscode.TabInputText) {
       uri         = tab.input.uri;
       label       = path.basename(uri.fsPath);
-      description = vscode.workspace.asRelativePath(uri);
+      description = formatFilePath(uri, { useWorkspaceRelative: true });
       tooltip     = uri.fsPath;
       fileType    = path.extname(uri.fsPath);
       tabType     = 'file';
-    } else if (tab.input instanceof vscode.TabInputWebview) {
+    }
+    else if (tab.input instanceof vscode.TabInputWebview) {
       // No URI — webview tabs (Settings, Extensions, Welcome…)
       uri         = undefined;
       label       = tab.label;
       description = undefined;
       tooltip     = tab.label;
       tabType     = 'webview';
-    } else if (tab.input instanceof vscode.TabInputCustom) {
+    }
+    else if (tab.input instanceof vscode.TabInputCustom) {
       uri         = tab.input.uri;
       label       = path.basename(uri.fsPath) || tab.label || 'Custom';
-      description = vscode.workspace.asRelativePath(uri);
+      description = formatFilePath(uri, { useWorkspaceRelative: true });
       tooltip     = uri.fsPath;
       fileType    = path.extname(uri.fsPath);
       tabType     = 'custom';
-    } else if (tab.input instanceof vscode.TabInputNotebook) {
+    }
+    else if (tab.input instanceof vscode.TabInputNotebook) {
       uri         = tab.input.uri;
       label       = path.basename(uri.fsPath);
-      description = vscode.workspace.asRelativePath(uri);
+      description = formatFilePath(uri, { useWorkspaceRelative: true });
       tooltip     = uri.fsPath;
       fileType    = path.extname(uri.fsPath);
       tabType     = 'notebook';
-    } else {
-      return null;
     }
+    else { return null; }
 
     const viewColumn = tab.group.viewColumn;
 
@@ -186,14 +215,14 @@ export class TabSyncService {
     };
 
     const state: SideTabState = {
-      isActive:       tab.isActive,
-      isDirty:        tab.isDirty,
-      isPinned:       tab.isPinned,
-      isPreview:      tab.isPreview,
-      groupId:        viewColumn,
+      isActive       : tab.isActive,
+      isDirty        : tab.isDirty,
+      isPinned       : tab.isPinned,
+      isPreview      : tab.isPreview,
+      groupId        : viewColumn,
       viewColumn,
-      indexInGroup:   index ?? 0,
-      lastAccessTime: Date.now(),
+      indexInGroup   : index ?? 0,
+      lastAccessTime : Date.now(),
     };
 
     return new SideTab(metadata, state);
