@@ -199,6 +199,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     background:  var(--vscode-sideBar-background, var(--vscode-editor-background));
     overflow-x:  hidden;
     user-select: none;
+    border-top: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border, rgba(128,128,128,0.35)));
   }
 
   /* ===== Group header ===== */
@@ -225,6 +226,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     cursor: pointer;
     position: relative;
     border-left: 4px solid transparent;
+    border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border, rgba(128,128,128,0.35)));
     transition: background 80ms ease;
   }
   .tab:hover {
@@ -282,7 +284,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     justify-content: center;
     width: 22px;
     height: 22px;
-    font-size: 10px;
+    font-size: 16px;
     color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
   }
   /* Hide dirty dot on hover (replaced by close) */
@@ -323,6 +325,14 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     font-size: 11px;
     margin-left: 4px;
     opacity: 0.7;
+  }
+
+  /* Icon support */
+  .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
   }
 
   /* ===== Empty state ===== */
@@ -371,7 +381,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   private renderGroupHeader(group: SideTabGroup): string {
     const marker = group.isActive ? ' ● Active' : '';
     return `<div class="group-header">
-      <span class="codicon codicon-window"></span>
+      <span class="icon">▢</span>
       <span>${this.esc(group.label)}${marker}</span>
     </div>`;
   }
@@ -399,17 +409,17 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       ? '<span class="tab-state" title="Modified">●</span>'
       : '<span class="tab-state clean"></span>';
 
-    const pinBadge = tab.state.isPinned ? '<span class="pin-badge" title="Pinned">📌</span>' : '';
+    const pinBadge = tab.state.isPinned ? '<span class="pin-badge icon" title="Pinned">📌</span>' : '';
 
     const pinBtn = tab.state.isPinned
-      ? `<button data-action="unpinTab" data-tabid="${this.esc(tab.metadata.id)}" title="Unpin">📌</button>`
-      : `<button data-action="pinTab"   data-tabid="${this.esc(tab.metadata.id)}" title="Pin">📌</button>`;
+      ? `<button data-action="unpinTab" data-tabid="${this.esc(tab.metadata.id)}" title="Unpin"><span class="icon">📌</span></button>`
+      : `<button data-action="pinTab"   data-tabid="${this.esc(tab.metadata.id)}" title="Pin"><span class="icon">📍</span></button>`;
 
     const chatBtn = copilotReady
-      ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat">✚</button>`
+      ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="icon">➕</span></button>`
       : '';
 
-    const closeBtn = `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close">✕</button>`;
+    const closeBtn = `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="icon">✕</span></button>`;
 
     const pathHtml = showPath && tab.metadata.description
       ? `<div class="tab-path">${this.esc(tab.metadata.description)}</div>`
