@@ -72,6 +72,6 @@ export function getConfiguration(): TabsLoverConfiguration {
     iconSize           : config.get('iconSize'          ,STYLE_CONSTANTS.TAB_ICON_SIZE),
     enableHoverActions : config.get('enableHoverActions',true)                         ,
     showStateIcons     : config.get('showStateIcons'    ,true)                         ,
-    enableDragDrop     : config.get('enableDragDrop'    ,false)                        ,
+    enableDragDrop     : config.get('enableDragDrop'    ,true)                         ,
   };
 }
