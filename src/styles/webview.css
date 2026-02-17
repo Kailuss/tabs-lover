@@ -81,6 +81,21 @@ body.drag-active {
   cursor      : default;
 }
 
+/* Durante el drag, evitar que aparezcan los botones de acción en tabs pineadas */
+body.drag-active .tab[data-pinned="true"]:hover .tab-actions {
+  display : none !important;
+}
+
+/* Durante el drag, mantener visible el state dot en tabs pineadas */
+body.drag-active .tab[data-pinned="true"]:hover .tab-state {
+  display : flex !important;
+}
+
+/* Durante el drag, cambiar cursor en tabs pineadas para que no parezcan interactivas */
+body.drag-active .tab[data-pinned="true"] {
+  cursor : default !important;
+}
+
 /* Animación de cierre suave */
 .tab.closing {
   animation: slideOut 200ms cubic-bezier(0.4, 0, 1, 1) forwards;

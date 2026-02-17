@@ -84,7 +84,28 @@ const BUILTIN_ACTIONS: FileAction[] = [
       await vscode.commands.executeCommand('simpleBrowser.api.open', uri.toString());
     },
   },
-
+// ── CSS / SCSS / Less: formatear ──
+{
+  id      : 'formatCss',
+  icon    : 'paintcan',
+  tooltip : 'Format Stylesheet',
+  match   : byExtension('.css', '.scss', '.less', '.sass'),
+  execute : async (uri) => {
+    await vscode.commands.executeCommand('vscode.open', uri);
+    await vscode.commands.executeCommand('editor.action.formatDocument');
+  },
+},// ── Lock files: abrir npm scripts / audit ──
+{
+  id      : 'openLockFile',
+  icon    : 'lock',
+  tooltip : 'Show in Explorer & Outline',
+  match   : byPattern(/^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Gemfile\.lock|poetry\.lock|Cargo\.lock|composer\.lock)$/i),
+  execute : async (uri) => {
+    await vscode.commands.executeCommand('vscode.open', uri);
+    // Fuerza el panel Outline para navegar dependencias visualmente
+    await vscode.commands.executeCommand('outline.focus');
+  },
+},
   // ── SVG: previsualizar ──
   {
     id      : 'previewSvg',
