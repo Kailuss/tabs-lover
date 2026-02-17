@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { TabStateService }          from '../services/TabStateService';
 import { TabIconManager }           from '../services/TabIconManager';
 import { CopilotService }           from '../services/CopilotService';
-import { SideTab }                   from '../models/SideTab';
-import { getConfiguration }          from '../constants/styles';
+import { TabDragDropService }       from '../services/TabDragDropService';
+import { FileActionRegistry }      from '../services/FileActionRegistry';
+import { SideTab }                  from '../models/SideTab';
+import { getConfiguration }         from '../constants/styles';
 import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
 
 /**
@@ -24,8 +26,10 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     private readonly copilotService : CopilotService,
     private readonly iconManager    : TabIconManager,
     private readonly context        : vscode.ExtensionContext,
+    private readonly dragDropService: TabDragDropService,
+    private readonly fileActionRegistry: FileActionRegistry,
   ) {
-    this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context);
+    this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context, fileActionRegistry);
     // Re-render on every state change
     stateService.onDidChangeState(() => this.refresh());
     stateService.onDidChangeStateSilent(() => this.refresh());
@@ -34,15 +38,15 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   //= WEBVIEW LIFECYCLE
 
   resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    _ctx: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
+    webviewView : vscode.WebviewView,
+    _ctx        : vscode.WebviewViewResolveContext,
+    _token      : vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
     webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      enableScripts      : true,
+      localResourceRoots : [this._extensionUri],
     };
 
     webviewView.webview.onDidReceiveMessage(msg => this.handleMessage(msg));
@@ -61,11 +65,11 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     setTimeout(async () => {
       this._refreshScheduled = false;
       if (!this._view) { return; }
-      
-      const config = getConfiguration();
-      const groups = this.stateService.getGroups();
+
+      const config       = getConfiguration();
+      const groups       = this.stateService.getGroups();
       const copilotReady = this.copilotService.isAvailable();
-      
+
       this._view.webview.html = await this.htmlBuilder.buildHtml(
         this._view.webview,
         groups,
@@ -73,6 +77,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         config.tabHeight,
         config.showFilePath,
         copilotReady,
+        config.enableDragDrop,
       );
     }, 0);
   }
@@ -116,6 +121,25 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       case 'contextMenu': {
         const tab = this.findTab(msg.tabId);
         if (tab) { await this.showContextMenu(tab); }
+        break;
+      }
+      case 'dropTab': {
+        const { sourceTabId, targetTabId, insertPosition, sourceGroupId, targetGroupId } = msg;
+        
+        // Movimiento dentro del mismo grupo
+        if (sourceGroupId === targetGroupId) {
+          this.dragDropService.reorderWithinGroup(sourceTabId, targetTabId, insertPosition);
+        } else {
+          // Movimiento entre grupos
+          await this.dragDropService.moveBetweenGroups(sourceTabId, targetGroupId, targetTabId, insertPosition);
+        }
+        break;
+      }
+      case 'fileAction': {
+        const tab = this.findTab(msg.tabId);
+        if (tab?.metadata.uri && msg.actionId) {
+          await this.fileActionRegistry.execute(msg.actionId, tab.metadata.uri);
+        }
         break;
       }
     }

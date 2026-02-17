@@ -3,6 +3,7 @@ import { TabsLoverWebviewProvider } from './providers/TabsLoverWebviewProvider';
 import { TabStateService } from './services/TabStateService';
 import { TabSyncService } from './services/TabSyncService';
 import { TabDragDropService } from './services/TabDragDropService';
+import { FileActionRegistry } from './services/FileActionRegistry';
 import { TabIconManager } from './services/TabIconManager';
 import { ThemeService } from './services/ThemeService';
 import { CopilotService } from './services/CopilotService';
@@ -19,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
     const stateService  = new TabStateService();
     const syncService   = new TabSyncService(stateService);
     const dragDropService = new TabDragDropService(stateService);
+    const fileActionRegistry = new FileActionRegistry();
     const iconManager   = new TabIconManager();
     const themeService  = new ThemeService();
     const copilotService = new CopilotService();
@@ -33,6 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
       iconManager,
       context,
       dragDropService,
+      fileActionRegistry,
     );
 
     context.subscriptions.push(

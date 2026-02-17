@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { TabIconManager } from '../services/TabIconManager';
-import { SideTab }        from '../models/SideTab';
-import { SideTabGroup }   from '../models/SideTabGroup';
+import { TabIconManager }      from '../services/TabIconManager';
+import { SideTab }             from '../models/SideTab';
+import { SideTabGroup }        from '../models/SideTabGroup';
+import { FileActionRegistry, ResolvedFileAction } from '../services/FileActionRegistry';
 
 /**
  * Builder encargado de generar el HTML/CSS del webview de tabs.
@@ -12,6 +13,7 @@ export class TabsLoverHtmlBuilder {
     private readonly extensionUri: vscode.Uri,
     private readonly iconManager: TabIconManager,
     private readonly context: vscode.ExtensionContext,
+    private readonly fileActionRegistry?: FileActionRegistry,
   ) {}
 
   /**
@@ -88,6 +90,12 @@ export class TabsLoverHtmlBuilder {
               closingTabs.delete(tabId);
             }, 200); // Duración de la animación
           }
+          return;
+        }
+        
+        // Manejar fileAction con actionId adicional
+        if (btn.dataset.action === 'fileAction') {
+          vscode.postMessage({ type: 'fileAction', tabId: btn.dataset.tabid, actionId: btn.dataset.actionid });
           return;
         }
         
@@ -178,10 +186,8 @@ export class TabsLoverHtmlBuilder {
     // Badge de pinned junto al nombre
     const pinBadge = tab.state.isPinned ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>' : '';
 
-    // Botones de acción
-    const pinBtn = tab.state.isPinned
-      ? `<button data-action="unpinTab" data-tabid="${this.esc(tab.metadata.id)}" title="Unpin"><span class="codicon codicon-pin"></span></button>`
-      : `<button data-action="pinTab"   data-tabid="${this.esc(tab.metadata.id)}" title="Pin"><span class="codicon codicon-pinned"></span></button>`;
+    // Botón contextual de acción de archivo
+    const fileActionBtn = this.renderFileActionButton(tab);
 
     const chatBtn = copilotReady && tab.metadata.uri
       ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
@@ -203,7 +209,7 @@ export class TabsLoverHtmlBuilder {
       </div>
       ${dirtyDot}
       <span class="tab-actions">
-        ${pinBtn}${chatBtn}${closeBtn}
+        ${fileActionBtn}${chatBtn}${closeBtn}
       </span>
     </div>`;
   }
@@ -215,6 +221,21 @@ export class TabsLoverHtmlBuilder {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Genera el botón de acción contextual para un tab.
+   * Si el registry encuentra una acción para el tipo de archivo, muestra ese
+   * botón; si no, no muestra nada (el pin queda solo en el menú contextual).
+   */
+  private renderFileActionButton(tab: SideTab): string {
+    if (!this.fileActionRegistry || !tab.metadata.uri) { return ''; }
+
+    const fileName = tab.metadata.label;
+    const resolved = this.fileActionRegistry.resolve(fileName, tab.metadata.uri);
+    if (!resolved) { return ''; }
+
+    return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;
   }
 
   /** Codicon names for built-in webview / unknown-input tabs. */
