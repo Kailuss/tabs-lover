@@ -225,8 +225,8 @@
         },
         "tabsLover.enableDragDrop": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable experimental drag & drop reordering of tabs."
+          "default": true,
+          "description": "Enable drag & drop reordering of tabs within and across groups."
         }
       }
     }

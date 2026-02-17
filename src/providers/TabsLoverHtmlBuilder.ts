@@ -24,6 +24,7 @@ export class TabsLoverHtmlBuilder {
     tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
+    enableDragDrop: boolean = false,
   ): Promise<string> {
     // Get CSS URIs
     const codiconCssUri = webview.asWebviewUri(
@@ -38,16 +39,18 @@ export class TabsLoverHtmlBuilder {
     if (groups.length <= 1) {
       const groupId = groups[0]?.id;
       if (groupId !== undefined) {
-        tabsHtml = await this.renderTabList(getTabsInGroup(groupId), tabHeight, showPath, copilotReady);
+        tabsHtml = await this.renderTabList(getTabsInGroup(groupId), tabHeight, showPath, copilotReady, enableDragDrop);
       }
     } else {
       for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
         const tabs = getTabsInGroup(group.id);
         tabsHtml += this.renderGroupHeader(group);
-        tabsHtml += await this.renderTabList(tabs, tabHeight, showPath, copilotReady);
+        tabsHtml += await this.renderTabList(tabs, tabHeight, showPath, copilotReady, enableDragDrop);
       }
     }
+
+    const dragDropScript = enableDragDrop ? this.getDragDropScript() : '';
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -62,10 +65,32 @@ export class TabsLoverHtmlBuilder {
   <script>
     const vscode = acquireVsCodeApi();
 
+    // Flag para evitar mensajes duplicados durante animación
+    const closingTabs = new Set();
+
     document.addEventListener('click', e => {
       const btn = e.target.closest('button[data-action]');
       if (btn) {
         e.stopPropagation();
+        
+        // Manejar closeTab con animación
+        if (btn.dataset.action === 'closeTab') {
+          const tabId = btn.dataset.tabid;
+          const tab = document.querySelector(\`.tab[data-tabid="\${tabId}"]\`);
+          
+          if (tab && !closingTabs.has(tabId)) {
+            closingTabs.add(tabId);
+            tab.classList.add('closing');
+            
+            // Esperar a que termine la animación antes de enviar el mensaje
+            setTimeout(() => {
+              vscode.postMessage({ type: 'closeTab', tabId: tabId });
+              closingTabs.delete(tabId);
+            }, 200); // Duración de la animación
+          }
+          return;
+        }
+        
         vscode.postMessage({ type: btn.dataset.action, tabId: btn.dataset.tabid });
         return;
       }
@@ -82,6 +107,8 @@ export class TabsLoverHtmlBuilder {
         vscode.postMessage({ type: 'contextMenu', tabId: tab.dataset.tabid });
       }
     });
+
+    ${dragDropScript}
   </script>
 </body>
 </html>`;
@@ -100,6 +127,7 @@ export class TabsLoverHtmlBuilder {
     tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
+    enableDragDrop: boolean = false,
   ): Promise<string> {
     // Ensure pinned tabs appear first, preserving relative order within each section
     const sorted = [...tabs].sort((a, b) => {
@@ -109,7 +137,7 @@ export class TabsLoverHtmlBuilder {
     });
 
     const rendered = await Promise.all(
-      sorted.map(t => this.renderTab(t, tabHeight, showPath, copilotReady))
+      sorted.map(t => this.renderTab(t, tabHeight, showPath, copilotReady, enableDragDrop))
     );
     return rendered.join('');
   }
@@ -119,8 +147,13 @@ export class TabsLoverHtmlBuilder {
     _tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
+    enableDragDrop: boolean = false,
   ): Promise<string> {
     const activeClass = tab.state.isActive ? ' active' : '';
+    
+    // Drag & drop attributes
+    const dataPinned = `data-pinned="${tab.state.isPinned}"`;
+    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
 
     // Estado visual del archivo (modificado)
     const dirtyDot = tab.state.isDirty
@@ -162,10 +195,10 @@ export class TabsLoverHtmlBuilder {
 
     const iconHtml = await this.getIconHtml(tab);
 
-    return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}">
+    return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
       <span class="tab-icon">${iconHtml}</span>
       <div class="tab-text">
-        <div class="tab-name${stateClass}"${stateStyle}>${this.esc(tab.metadata.label)}${pinBadge}</div>
+        <div class="tab-name${stateClass}">${this.esc(tab.metadata.label)}${pinBadge}</div>
         ${pathHtml}
       </div>
       ${dirtyDot}
@@ -289,5 +322,197 @@ export class TabsLoverHtmlBuilder {
         stroke="currentColor" stroke-width="1" fill="none"/>
       <path d="M10 1v3h3" stroke="currentColor" stroke-width="1" fill="none"/>
     </svg>`;
+  }
+
+  /**
+   * Genera el script de drag & drop basado en mouse events.
+   * La tab arrastrada se mueve verticalmente con el cursor como clon flotante,
+   * mientras las demás tabs se desplazan con animaciones CSS para adaptarse
+   * al nuevo orden dinámicamente.
+   */
+  private getDragDropScript(): string {
+    return `
+    // === Drag & Drop via Mouse Events ===
+    const TAB_H      = 43;   // Altura de cada tab incluyendo border (px)
+    const DRAG_THRESHOLD = 5; // Pixels antes de iniciar el drag
+
+    let isDragging   = false;
+    let startY       = 0;
+    let startMouseY  = 0;
+    let sourceEl     = null;  // tab DOM original
+    let cloneEl      = null;  // clon flotante
+    let siblings     = [];    // tabs reordenables (no pinned, excluyendo la arrastrada)
+    let originalOrder = [];   // posiciones originales para calcular desplazamientos
+    let currentInsertIndex = -1; // índice actual de inserción en la lista lógica
+    let sourceIndex  = -1;    // índice original de la tab arrastrada
+    let tabGroupId   = null;
+
+    // --- Mousedown: preparar un posible drag ---
+    document.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      const tab = e.target.closest('.tab');
+      if (!tab) return;
+      if (e.target.closest('button')) return;
+      if (tab.dataset.pinned === 'true') return;
+
+      sourceEl    = tab;
+      startMouseY = e.clientY;
+      startY      = tab.getBoundingClientRect().top;
+      tabGroupId  = tab.dataset.groupid;
+    });
+
+    // --- Mousemove: iniciar o continuar el drag ---
+    document.addEventListener('mousemove', e => {
+      if (!sourceEl) return;
+
+      if (!isDragging) {
+        if (Math.abs(e.clientY - startMouseY) < DRAG_THRESHOLD) return;
+        beginDrag(e);
+      }
+
+      // Mover el clon con el cursor
+      const dy = e.clientY - startMouseY;
+      cloneEl.style.transform = 'translateY(' + dy + 'px)';
+
+      // Calcular en qué posición cae el centro del clon
+      const cloneCenter = startY + (TAB_H / 2) + dy;
+      updateSiblingPositions(cloneCenter);
+    });
+
+    // --- Mouseup: terminar el drag ---
+    document.addEventListener('mouseup', e => {
+      if (!sourceEl) return;
+      if (!isDragging) { sourceEl = null; return; }
+      commitDrop();
+    });
+
+    // --- Cancelar si se sale de la ventana ---
+    document.addEventListener('mouseleave', e => {
+      if (isDragging) cancelDrag();
+    });
+
+    // ------------ helpers ------------
+
+    function beginDrag(e) {
+      isDragging = true;
+      document.body.classList.add('drag-active');
+
+      // Recolectar tabs no-pinned del mismo grupo
+      const allTabs = Array.from(
+        document.querySelectorAll('.tab[data-groupid="' + tabGroupId + '"]')
+      );
+
+      const unpinned = allTabs.filter(t => t.dataset.pinned !== 'true');
+      sourceIndex = unpinned.indexOf(sourceEl);
+      currentInsertIndex = sourceIndex;
+
+      siblings = unpinned.filter(t => t !== sourceEl);
+
+      // Guardar posiciones originales (sus rect.top)
+      originalOrder = siblings.map(t => ({
+        el: t,
+        origTop: t.getBoundingClientRect().top,
+      }));
+
+      // Crear clon flotante
+      const rect = sourceEl.getBoundingClientRect();
+      cloneEl = sourceEl.cloneNode(true);
+      cloneEl.classList.add('drag-clone');
+      cloneEl.style.top    = rect.top + 'px';
+      cloneEl.style.left   = rect.left + 'px';
+      cloneEl.style.width  = rect.width + 'px';
+      cloneEl.style.height = rect.height + 'px';
+      document.body.appendChild(cloneEl);
+
+      // Ocultar la original (placeholder)
+      sourceEl.classList.add('drag-placeholder');
+
+      // Habilitar transiciones en siblings
+      siblings.forEach(t => t.classList.add('drag-shifting'));
+    }
+
+    function updateSiblingPositions(cloneCenter) {
+      // Calcular nuevo índice basado en posiciones ORIGINALES
+      // (no las animadas, para evitar interferencias)
+      let newIndex = siblings.length; // por defecto al final
+
+      for (let i = 0; i < originalOrder.length; i++) {
+        const midpoint = originalOrder[i].origTop + (TAB_H / 2);
+        if (cloneCenter < midpoint) {
+          newIndex = i;
+          break;
+        }
+      }
+
+      if (newIndex === currentInsertIndex) return;
+      currentInsertIndex = newIndex;
+
+      // Aplicar desplazamientos: las tabs se mueven para hacer hueco
+      for (let i = 0; i < originalOrder.length; i++) {
+        const s = originalOrder[i];
+        let shift = 0;
+
+        // Posición lógica original de esta sibling en unpinned completo
+        const origLogical = (i < sourceIndex) ? i : i + 1;
+
+        if (origLogical < sourceIndex && i >= currentInsertIndex) {
+          shift = TAB_H;
+        } else if (origLogical > sourceIndex && i < currentInsertIndex) {
+          shift = -TAB_H;
+        }
+
+        s.el.style.transform = shift ? ('translateY(' + shift + 'px)') : '';
+      }
+    }
+
+    function commitDrop() {
+      // Solo enviar mensaje si realmente cambió la posición
+      if (currentInsertIndex !== sourceIndex) {
+        const order = siblings.map(s => s);
+
+        let targetTabId, insertPosition;
+        if (currentInsertIndex < order.length) {
+          targetTabId = order[currentInsertIndex].dataset.tabid;
+          insertPosition = 'before';
+        } else {
+          targetTabId = order[order.length - 1].dataset.tabid;
+          insertPosition = 'after';
+        }
+
+        vscode.postMessage({
+          type: 'dropTab',
+          sourceTabId: sourceEl.dataset.tabid,
+          targetTabId: targetTabId,
+          insertPosition: insertPosition,
+          sourceGroupId: parseInt(tabGroupId, 10),
+          targetGroupId: parseInt(tabGroupId, 10),
+        });
+      }
+
+      teardown();
+    }
+
+    function cancelDrag() {
+      teardown();
+    }
+
+    function teardown() {
+      if (cloneEl) { cloneEl.remove(); cloneEl = null; }
+      if (sourceEl) {
+        sourceEl.classList.remove('drag-placeholder');
+        sourceEl = null;
+      }
+      siblings.forEach(t => {
+        t.classList.remove('drag-shifting');
+        t.style.transform = '';
+      });
+      document.body.classList.remove('drag-active');
+      isDragging       = false;
+      siblings         = [];
+      originalOrder    = [];
+      currentInsertIndex = -1;
+      sourceIndex      = -1;
+    }
+    `;
   }
 }
