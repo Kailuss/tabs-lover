@@ -35,6 +35,15 @@ export class TabSyncService {
       }),
     );
 
+    // Listener para cambios en diagnósticos (errores/warnings)
+    this.disposables.push(
+      vscode.languages.onDidChangeDiagnostics(e => {
+        for (const uri of e.uris) {
+          this.updateTabDiagnostics(uri);
+        }
+      }),
+    );
+
     context.subscriptions.push(...this.disposables);
   }
 
@@ -72,6 +81,12 @@ export class TabSyncService {
       existing.state.isDirty   = tab.isDirty;
       existing.state.isPinned  = tab.isPinned;
       existing.state.isPreview = tab.isPreview;
+      
+      // Actualizar git status y diagnósticos
+      if (existing.metadata.uri) {
+        existing.state.gitStatus = this.getGitStatus(existing.metadata.uri);
+        existing.state.diagnosticSeverity = this.getDiagnosticSeverity(existing.metadata.uri);
+      }
 
       if (onlyActive) { this.stateService.updateTabSilent(existing); }
       else            { this.stateService.updateTab(existing);       }
@@ -113,6 +128,24 @@ export class TabSyncService {
     // This correctly handles the same file open in multiple groups
     // (only the focused group's tab will have isActive === true).
     this.syncActiveState();
+  }
+
+  /**
+   * Actualiza los diagnósticos y git status de una pestaña específica cuando cambian.
+   */
+  private updateTabDiagnostics(uri: vscode.Uri): void {
+    const tab = this.stateService.findTabByUri(uri);
+    if (!tab) { return; }
+
+    const newDiagnosticSeverity = this.getDiagnosticSeverity(uri);
+    const newGitStatus = this.getGitStatus(uri);
+
+    if (tab.state.diagnosticSeverity !== newDiagnosticSeverity || 
+        tab.state.gitStatus !== newGitStatus) {
+      tab.state.diagnosticSeverity = newDiagnosticSeverity;
+      tab.state.gitStatus = newGitStatus;
+      this.stateService.updateTab(tab);
+    }
   }
 
   /**
@@ -256,6 +289,8 @@ export class TabSyncService {
       viewColumn,
       indexInGroup   : index ?? 0,
       lastAccessTime : Date.now(),
+      gitStatus      : uri ? this.getGitStatus(uri) : null,
+      diagnosticSeverity : uri ? this.getDiagnosticSeverity(uri) : null,
     };
 
     return new SideTab(metadata, state);
@@ -276,6 +311,84 @@ export class TabSyncService {
     // Webview / unknown tabs have no URI — use a sanitised label
     const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
     return `${tabType}:${safe}-${viewColumn}`;
+  }
+
+  /**
+   * Obtiene el estado de git para un archivo basado en decoraciones SCM.
+   * Utiliza la API de git de VS Code para obtener el estado del archivo.
+   */
+  private getGitStatus(uri: vscode.Uri): import('../models/SideTab').GitStatus {
+    try {
+      // Acceder a la extensión de git
+      const gitExtension = vscode.extensions.getExtension('vscode.git');
+      if (!gitExtension) { return null; }
+
+      const gitApi = gitExtension.exports;
+      if (!gitApi) { return null; }
+
+      const api = gitApi.getAPI(1);
+      if (!api || api.repositories.length === 0) { return null; }
+
+      // Buscar el repositorio que contiene este archivo
+      for (const repo of api.repositories) {
+        const repoUri = repo.rootUri;
+        if (!uri.fsPath.startsWith(repoUri.fsPath)) { continue; }
+
+        // Buscar el cambio en working tree o index
+        const allChanges = [
+          ...(repo.state.workingTreeChanges || []),
+          ...(repo.state.indexChanges || []),
+          ...(repo.state.mergeChanges || []),
+        ];
+
+        const change = allChanges.find((c: any) => c.uri.fsPath === uri.fsPath);
+
+        if (change) {
+          // Mapear el estado de git a nuestras clases
+          // Status values from git extension API:
+          // 0: INDEX_MODIFIED, 1: INDEX_ADDED, 2: INDEX_DELETED, 3: INDEX_RENAMED, 4: INDEX_COPIED
+          // 5: MODIFIED, 6: DELETED, 7: UNTRACKED, 8: IGNORED, 9: INTENT_TO_ADD
+          const status = change.status;
+          
+          if (status === 1 || status === 7) { return 'untracked'; }  // INDEX_ADDED or UNTRACKED
+          if (status === 0 || status === 5) { return 'modified'; }   // INDEX_MODIFIED or MODIFIED
+          if (status === 2 || status === 6) { return 'deleted'; }    // INDEX_DELETED or DELETED
+          if (status === 8) { return 'ignored'; }                    // IGNORED
+          if (repo.state.mergeChanges && repo.state.mergeChanges.length > 0) {
+            return 'conflict';
+          }
+          
+          return 'modified'; // default for other statuses
+        }
+      }
+    } catch (error) {
+      // Silently fail if git is not available
+    }
+    return null;
+  }
+
+  /**
+   * Obtiene la severidad más alta de diagnóstico para un archivo.
+   * Retorna Error si hay errores, Warning si hay advertencias, o null si no hay diagnósticos.
+   */
+  private getDiagnosticSeverity(uri: vscode.Uri): vscode.DiagnosticSeverity | null {
+    const diagnostics = vscode.languages.getDiagnostics(uri);
+    if (diagnostics.length === 0) { return null; }
+
+    let maxSeverity: vscode.DiagnosticSeverity | null = null;
+    for (const diagnostic of diagnostics) {
+      if (maxSeverity === null || diagnostic.severity < maxSeverity) {
+        maxSeverity = diagnostic.severity;
+      }
+    }
+
+    // Solo retornar si es Error o Warning
+    if (maxSeverity === vscode.DiagnosticSeverity.Error || 
+        maxSeverity === vscode.DiagnosticSeverity.Warning) {
+      return maxSeverity;
+    }
+
+    return null;
   }
 
   dispose(): void {

@@ -128,10 +128,19 @@ export class TabsLoverHtmlBuilder {
       : '<span class="tab-state clean"></span>';
 
     // Determinar clase de estado para el nombre del archivo
-    const stateClass = tab.state.isDirty ? ' modified' : '';
-    const stateStyle = tab.state.isDirty 
-      ? ' style="color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);"' 
-      : '';
+    // Prioridad: diagnostics > git status > dirty
+    let stateClass = '';
+    if (tab.state.diagnosticSeverity === 0) {  // Error
+      stateClass = ' error';
+    } else if (tab.state.diagnosticSeverity === 1) {  // Warning
+      stateClass = ' warning';
+    } else if (tab.state.gitStatus) {
+      stateClass = ` ${tab.state.gitStatus}`;
+    } else if (tab.state.isDirty) {
+      stateClass = ' modified';
+    }
+
+    const stateStyle = '';  // Las clases CSS ya tienen los colores definidos
 
     // Badge de pinned junto al nombre
     const pinBadge = tab.state.isPinned ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>' : '';

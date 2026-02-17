@@ -18,6 +18,9 @@ export interface SideTabMetadata {
 
 }
 
+// Git decoration status for a file
+export type GitStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 'ignored' | 'conflict' | null;
+
 // Mutable runtime state of a tab.
 export interface SideTabState {
   isActive       : boolean;
@@ -28,6 +31,8 @@ export interface SideTabState {
   viewColumn     : vscode.ViewColumn;
   indexInGroup   : number;
   lastAccessTime : number;
+  gitStatus      : GitStatus;                    // Git decoration state
+  diagnosticSeverity : vscode.DiagnosticSeverity | null;  // Highest severity diagnostic (error > warning)
 }
 
 /**
