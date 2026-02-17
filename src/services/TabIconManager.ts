@@ -183,7 +183,13 @@ export class TabIconManager {
       const fileNameLower = fileName.toLowerCase();
 
       const lastDotIndex = fileNameLower.lastIndexOf('.');
-      const extName = lastDotIndex > 0 ? fileNameLower.substring(lastDotIndex + 1) : '';
+      const extName = lastDotIndex >= 0 ? fileNameLower.substring(lastDotIndex + 1) : '';
+
+      // Compound extension for dotfiles/multi-dot names (e.g. ".d.ts", ".test.js")
+      const firstDotIndex = fileNameLower.indexOf('.');
+      const compoundExt = firstDotIndex >= 0 && firstDotIndex !== lastDotIndex
+        ? fileNameLower.substring(firstDotIndex + 1)
+        : '';
 
       const cacheKey = `${fileNameLower}|${languageId || ''}`;
 
@@ -193,9 +199,11 @@ export class TabIconManager {
       if (!iconPath) {
         let iconId: string | undefined = undefined;
 
-        // Priority: exact file name → extension → language id
+        // Priority: exact file name → compound ext → simple ext → language id
         if (this._iconMap[`name:${fileNameLower}`]) {
           iconId = this._iconMap[`name:${fileNameLower}`];
+        } else if (compoundExt && this._iconMap[`ext:${compoundExt}`]) {
+          iconId = this._iconMap[`ext:${compoundExt}`];
         } else if (extName && this._iconMap[`ext:${extName}`]) {
           iconId = this._iconMap[`ext:${extName}`];
         } else if (languageId && this._iconMap[`lang:${languageId.toLowerCase()}`]) {

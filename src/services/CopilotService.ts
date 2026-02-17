@@ -2,6 +2,21 @@ import * as vscode from 'vscode';
 import { SideTab } from '../models/SideTab';
 
 /**
+ * Options accepted by the `workbench.action.chat.open` command.
+ * Subset of the internal IChatViewOpenOptions interface.
+ */
+interface ChatOpenOptions {
+  /** Prompt text to pre-fill in the chat input. */
+  query?: string;
+  /** If true, the query is placed in the input but not sent automatically. */
+  isPartialQuery?: boolean;
+  /** File URIs (or URI + range) to attach as context. */
+  attachFiles?: (vscode.Uri | { uri: vscode.Uri; range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number } })[];
+  /** Chat mode: 'agent', 'ask', or 'edit'. */
+  mode?: string;
+}
+
+/**
  * Integración opcional con GitHub Copilot Chat.
  * Explicación práctica: permite añadir archivos al contexto de chat desde la UI.
  */
@@ -23,48 +38,52 @@ export class CopilotService {
    */
   async addFileToChat(uri: vscode.Uri | undefined): Promise<boolean> {
     if (!uri) {
-      vscode.window.showWarningMessage('This tab has no file to add to chat.');
       return false;
     }
     if (!this.isAvailable()) {
-      vscode.window.showWarningMessage(
-        'GitHub Copilot Chat is not installed. Install it to use this feature.'
-      );
       return false;
     }
 
     try {
-      await vscode.commands.executeCommand('github.copilot.chat.addContext', { uri });
+      await vscode.commands.executeCommand('workbench.action.chat.open', {
+        query: '',
+        isPartialQuery: true,
+        attachFiles: [uri],
+      } satisfies ChatOpenOptions);
       return true;
-    } catch {
-      return await this.fallbackAddToChat(uri);
+    } catch (error) {
+      vscode.window.showWarningMessage(
+        `Failed to attach file to Copilot Chat: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
     }
   }
 
   /**
-   * Alternativa cuando la API de Copilot no está disponible: copia una referencia
-   * `#file:ruta` al portapapeles y abre el chat para que el usuario la pegue.
+   * Añade varios archivos al contexto de Copilot Chat en una sola acción.
+   * All files are attached simultaneously to a single chat session.
    */
-  private async fallbackAddToChat(uri: vscode.Uri): Promise<boolean> {
-    const relativePath = vscode.workspace.asRelativePath(uri);
-
-    // Copy reference
-    await vscode.env.clipboard.writeText(`#file:${relativePath}`);
-
-    // Open chat
-    await vscode.commands.executeCommand('workbench.action.chat.open');
-
-    // Notify
-    const action = await vscode.window.showInformationMessage(
-      `Reference copied: #file:${relativePath}`,
-      'Paste in Chat'
-    );
-
-    if (action === 'Paste in Chat') {
-      await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+  async addFilesToChat(uris: vscode.Uri[], query?: string): Promise<boolean> {
+    if (uris.length === 0) {
+      return false;
+    }
+    if (!this.isAvailable()) {
+      return false;
     }
 
-    return true;
+    try {
+      await vscode.commands.executeCommand('workbench.action.chat.open', {
+        query: query ?? '',
+        isPartialQuery: !query,
+        attachFiles: uris,
+      } satisfies ChatOpenOptions);
+      return true;
+    } catch (error) {
+      vscode.window.showWarningMessage(
+        `Failed to attach files to Copilot Chat: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
   }
 
   /** Muestra un QuickPick para seleccionar varios archivos y añadirlos al chat. */
@@ -91,14 +110,17 @@ export class CopilotService {
       return;
     }
 
-    for (const item of selected) {
-      if (item.tab.metadata.uri) {
-        await this.addFileToChat(item.tab.metadata.uri);
-      }
-    }
+    // Collect all URIs and attach them in a single chat.open call
+    const uris = selected
+      .map(item => item.tab.metadata.uri)
+      .filter((uri): uri is vscode.Uri => uri !== undefined);
 
-    vscode.window.showInformationMessage(
-      `Added ${selected.length} file(s) to Copilot Chat context`
-    );
+    const success = await this.addFilesToChat(uris);
+
+    if (success) {
+      vscode.window.showInformationMessage(
+        `Added ${uris.length} file(s) to Copilot Chat context`
+      );
+    }
   }
 }

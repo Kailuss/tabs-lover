@@ -144,6 +144,60 @@ export class TabStateService {
     return undefined;
   }
 
+  //- Pin / unpin reordering
+
+  /**
+   * Moves a tab to just after the last pinned tab in its group.
+   * Called after the tab is pinned so it visually moves up.
+   */
+  reorderOnPin(tabId: string): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) { return; }
+
+    const group = this.groups.get(tab.state.groupId);
+    if (!group) { return; }
+
+    // Remove the tab from its current position
+    const idx = group.tabs.findIndex(t => t.metadata.id === tabId);
+    if (idx === -1) { return; }
+    group.tabs.splice(idx, 1);
+
+    // Find the insertion point: after the last pinned tab
+    let insertAt = 0;
+    for (let i = 0; i < group.tabs.length; i++) {
+      if (group.tabs[i].state.isPinned) { insertAt = i + 1; }
+    }
+
+    group.tabs.splice(insertAt, 0, tab);
+    this._onDidChangeState.fire();
+  }
+
+  /**
+   * Moves a tab to the first position among non-pinned tabs in its group.
+   * Called after the tab is unpinned.
+   */
+  reorderOnUnpin(tabId: string): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) { return; }
+
+    const group = this.groups.get(tab.state.groupId);
+    if (!group) { return; }
+
+    // Remove the tab from its current position
+    const idx = group.tabs.findIndex(t => t.metadata.id === tabId);
+    if (idx === -1) { return; }
+    group.tabs.splice(idx, 1);
+
+    // Insert right after the last remaining pinned tab
+    let insertAt = 0;
+    for (let i = 0; i < group.tabs.length; i++) {
+      if (group.tabs[i].state.isPinned) { insertAt = i + 1; }
+    }
+
+    group.tabs.splice(insertAt, 0, tab);
+    this._onDidChangeState.fire();
+  }
+
   //- Utilities
 
   clear(): void {

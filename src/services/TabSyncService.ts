@@ -45,9 +45,11 @@ export class TabSyncService {
       if (st) { this.stateService.addTab(st); }
     }
 
-    for (const tab of e.closed) {
-      const st = this.convertToSideTab(tab);
-      if (st) { this.stateService.removeTab(st.metadata.id); }
+    // For closed tabs, don't try to regenerate the ID (it may not match the
+    // original for unknown/webview/diff tabs). Instead, build the set of IDs
+    // that *still exist* in VS Code and remove any internal tab that is gone.
+    if (e.closed.length > 0) {
+      this.removeOrphanedTabs();
     }
 
     for (const tab of e.changed) {
@@ -106,24 +108,11 @@ export class TabSyncService {
   }
 
   //: Seguimiento de la pestaña activa (actualiza solo isActive) 
-  private updateActiveTab(activeUri: vscode.Uri): void {
-    const activeStr = activeUri.toString();
-
-    for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
-        const st = this.convertToSideTab(tab);
-        if (!st) { continue; }
-
-        const existing = this.stateService.getTab(st.metadata.id);
-        if (!existing) { continue; }
-
-        const isNowActive = st.metadata.uri?.toString() === activeStr;
-        if (existing.state.isActive !== isNowActive) {
-          existing.state.isActive = isNowActive;
-          this.stateService.updateTabSilent(existing);
-        }
-      }
-    }
+  private updateActiveTab(_activeUri: vscode.Uri): void {
+    // Delegate to syncActiveState which reads tab.isActive from the native API.
+    // This correctly handles the same file open in multiple groups
+    // (only the focused group's tab will have isActive === true).
+    this.syncActiveState();
   }
 
   /**
@@ -149,6 +138,28 @@ export class TabSyncService {
   }
 
   /**
+   * Builds the set of IDs that currently exist in VS Code and removes any
+   * internal tab whose ID is no longer present. This is more reliable than
+   * trying to regenerate the ID from a closed-tab event (which may have
+   * different properties than the original open event).
+   */
+  private removeOrphanedTabs(): void {
+    const nativeIds = new Set<string>();
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const st = this.convertToSideTab(tab);
+        if (st) { nativeIds.add(st.metadata.id); }
+      }
+    }
+
+    for (const tab of this.stateService.getAllTabs()) {
+      if (!nativeIds.has(tab.metadata.id)) {
+        this.stateService.removeTab(tab.metadata.id);
+      }
+    }
+  }
+
+  /**
    * Convierte una pestaña nativa de VS Code a nuestro modelo `SideTab`.
    *
    * Explicación simple:
@@ -167,6 +178,7 @@ export class TabSyncService {
     let tooltip     : string;
     let fileType    : string = '';
     let tabType     : SideTabType = 'file';
+    let viewType    : string | undefined;
 
     if (tab.input instanceof vscode.TabInputText) {
       uri         = tab.input.uri;
@@ -176,13 +188,24 @@ export class TabSyncService {
       fileType    = path.extname(uri.fsPath);
       tabType     = 'file';
     }
+    else if (tab.input instanceof vscode.TabInputTextDiff) {
+      // Diff tabs (Working Tree, Staged Changes, etc.)
+      // Use the modified URI as the primary URI (right side of diff)
+      uri         = tab.input.modified;
+      label       = tab.label; // VS Code provides a descriptive label like "file.ts (Working Tree)"
+      description = formatFilePath(uri, { useWorkspaceRelative: true });
+      tooltip     = tab.label;
+      fileType    = path.extname(uri.fsPath);
+      tabType     = 'diff';
+    }
     else if (tab.input instanceof vscode.TabInputWebview) {
-      // No URI — webview tabs (Settings, Extensions, Welcome…)
+      // Webview tabs (Markdown Preview, Release Notes, extension webviews…)
       uri         = undefined;
       label       = tab.label;
       description = undefined;
       tooltip     = tab.label;
       tabType     = 'webview';
+      viewType    = tab.input.viewType;
     }
     else if (tab.input instanceof vscode.TabInputCustom) {
       uri         = tab.input.uri;
@@ -191,6 +214,7 @@ export class TabSyncService {
       tooltip     = uri.fsPath;
       fileType    = path.extname(uri.fsPath);
       tabType     = 'custom';
+      viewType    = tab.input.viewType;
     }
     else if (tab.input instanceof vscode.TabInputNotebook) {
       uri         = tab.input.uri;
@@ -200,7 +224,15 @@ export class TabSyncService {
       fileType    = path.extname(uri.fsPath);
       tabType     = 'notebook';
     }
-    else { return null; }
+    else {
+      // Unknown input — built-in editors like Settings, Extensions, Keyboard Shortcuts, Welcome…
+      // tab.input is undefined for these; identify them by tab.label.
+      uri         = undefined;
+      label       = tab.label;
+      description = undefined;
+      tooltip     = tab.label;
+      tabType     = 'unknown';
+    }
 
     const viewColumn = tab.group.viewColumn;
 
@@ -212,6 +244,7 @@ export class TabSyncService {
       tooltip,
       fileType,
       tabType,
+      viewType,
     };
 
     const state: SideTabState = {
@@ -236,9 +269,11 @@ export class TabSyncService {
     tabType: SideTabType,
   ): string {
     if (uri) {
-      return `${uri.toString()}-${viewColumn}`;
+      // Diff tabs share the same modified URI as the original file — prefix to distinguish
+      const prefix = tabType === 'diff' ? 'diff:' : '';
+      return `${prefix}${uri.toString()}-${viewColumn}`;
     }
-    // Webview tabs have no URI — use a sanitised label
+    // Webview / unknown tabs have no URI — use a sanitised label
     const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
     return `${tabType}:${safe}-${viewColumn}`;
   }
