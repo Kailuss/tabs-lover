@@ -284,13 +284,17 @@ export class TabIconManager {
         const altPath = path.join(iconThemeDir, normalizedIconPath);
         try {
           await fsp.access(altPath);
-          return await this.readIconAndConvertToBase64(altPath);
+          const result = await this.readIconAndConvertToBase64(altPath);
+          if (result) { this._iconCache.set(cacheKey, result); }
+          return result;
         } catch {
           return undefined;
         }
       }
 
-      return await this.readIconAndConvertToBase64(absIconPath, fileName);
+      const result = await this.readIconAndConvertToBase64(absIconPath, fileName);
+      if (result) { this._iconCache.set(cacheKey, result); }
+      return result;
     } catch (e) {
       console.error(`[TabsLover] Error getting icon for ${fileName}:`, e);
       return undefined;

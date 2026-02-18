@@ -13,12 +13,19 @@ import { formatFilePath }                                      from '../utils/he
  */
 export class TabSyncService {
   private disposables: vscode.Disposable[] = [];
+  private _gitApi: any | null = null;
 
   constructor(private stateService: TabStateService) {}
 
   /** Registra los listeners necesarios y realiza una sincronización inicial.
    *  Resultado: el `TabStateService` queda poblado y listo para la UI. */
   activate(context: vscode.ExtensionContext): void {
+    // Cache git API reference (avoid resolving the extension on every call)
+    this._gitApi = this.resolveGitApi();
+    this.disposables.push(
+      vscode.extensions.onDidChange(() => { this._gitApi = this.resolveGitApi(); }),
+    );
+
     this.syncAll();
 
     this.disposables.push(
@@ -82,8 +89,8 @@ export class TabSyncService {
       existing.state.isPinned  = tab.isPinned;
       existing.state.isPreview = tab.isPreview;
       
-      // Actualizar git status y diagnósticos
-      if (existing.metadata.uri) {
+      // Solo actualizar git/diagnósticos en cambios estructurales (no solo isActive)
+      if (!onlyActive && existing.metadata.uri) {
         existing.state.gitStatus = this.getGitStatus(existing.metadata.uri);
         existing.state.diagnosticSeverity = this.getDiagnosticSeverity(existing.metadata.uri);
       }
@@ -156,10 +163,10 @@ export class TabSyncService {
   private syncActiveState(): void {
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
-        const st = this.convertToSideTab(tab);
-        if (!st) { continue; }
+        const id = this.generateIdFromNativeTab(tab);
+        if (!id) { continue; }
 
-        const existing = this.stateService.getTab(st.metadata.id);
+        const existing = this.stateService.getTab(id);
         if (!existing) { continue; }
 
         if (existing.state.isActive !== tab.isActive) {
@@ -180,8 +187,8 @@ export class TabSyncService {
     const nativeIds = new Set<string>();
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
-        const st = this.convertToSideTab(tab);
-        if (st) { nativeIds.add(st.metadata.id); }
+        const id = this.generateIdFromNativeTab(tab);
+        if (id) { nativeIds.add(id); }
       }
     }
 
@@ -190,6 +197,42 @@ export class TabSyncService {
         this.stateService.removeTab(tab.metadata.id);
       }
     }
+  }
+
+  /**
+   * Lightweight ID extraction from a native tab — avoids full `convertToSideTab()`
+   * conversion.  Used by `removeOrphanedTabs` and `syncActiveState`.
+   */
+  private generateIdFromNativeTab(tab: vscode.Tab): string | null {
+    let uri   : vscode.Uri | undefined;
+    let label : string;
+    let tabType: SideTabType;
+
+    if (tab.input instanceof vscode.TabInputText) {
+      uri     = tab.input.uri;
+      label   = path.basename(uri.fsPath);
+      tabType = 'file';
+    } else if (tab.input instanceof vscode.TabInputTextDiff) {
+      uri     = tab.input.modified;
+      label   = tab.label;
+      tabType = 'diff';
+    } else if (tab.input instanceof vscode.TabInputWebview) {
+      label   = tab.label;
+      tabType = 'webview';
+    } else if (tab.input instanceof vscode.TabInputCustom) {
+      uri     = tab.input.uri;
+      label   = path.basename(uri.fsPath) || tab.label || 'Custom';
+      tabType = 'custom';
+    } else if (tab.input instanceof vscode.TabInputNotebook) {
+      uri     = tab.input.uri;
+      label   = path.basename(uri.fsPath);
+      tabType = 'notebook';
+    } else {
+      label   = tab.label;
+      tabType = 'unknown';
+    }
+
+    return this.generateId(label, uri, tab.group.viewColumn, tabType);
   }
 
   /**
@@ -317,20 +360,22 @@ export class TabSyncService {
    * Obtiene el estado de git para un archivo basado en decoraciones SCM.
    * Utiliza la API de git de VS Code para obtener el estado del archivo.
    */
+  /** Resolves the git extension API (cached in _gitApi). */
+  private resolveGitApi(): any | null {
+    try {
+      const ext = vscode.extensions.getExtension('vscode.git');
+      return ext?.isActive ? ext.exports?.getAPI(1) ?? null : null;
+    } catch { return null; }
+  }
+
   private getGitStatus(uri: vscode.Uri): import('../models/SideTab').GitStatus {
     try {
-      // Acceder a la extensión de git
-      const gitExtension = vscode.extensions.getExtension('vscode.git');
-      if (!gitExtension) { return null; }
-
-      const gitApi = gitExtension.exports;
-      if (!gitApi) { return null; }
-
-      const api = gitApi.getAPI(1);
-      if (!api || api.repositories.length === 0) { return null; }
+      // Lazy init: resolve git API if not yet cached
+      if (!this._gitApi) { this._gitApi = this.resolveGitApi(); }
+      if (!this._gitApi || this._gitApi.repositories.length === 0) { return null; }
 
       // Buscar el repositorio que contiene este archivo
-      for (const repo of api.repositories) {
+      for (const repo of this._gitApi.repositories) {
         const repoUri = repo.rootUri;
         if (!uri.fsPath.startsWith(repoUri.fsPath)) { continue; }
 

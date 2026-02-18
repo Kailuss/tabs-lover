@@ -81,19 +81,9 @@ body.drag-active {
   cursor      : default;
 }
 
-/* Durante el drag, evitar que aparezcan los botones de acción en tabs pineadas */
-body.drag-active .tab[data-pinned="true"]:hover .tab-actions {
-  display : none !important;
-}
-
-/* Durante el drag, mantener visible el state dot en tabs pineadas */
-body.drag-active .tab[data-pinned="true"]:hover .tab-state {
-  display : flex !important;
-}
-
-/* Durante el drag, cambiar cursor en tabs pineadas para que no parezcan interactivas */
+/* During drag, make pinned tabs completely non-interactive */
 body.drag-active .tab[data-pinned="true"] {
-  cursor : default !important;
+  pointer-events : none;
 }
 
 /* Animación de cierre suave */
@@ -155,30 +145,38 @@ body.drag-active .tab[data-pinned="true"] {
   font-size     : 13px;
 }
 
-/* File state colors - higher specificity to override active state */
-.tab .tab-name.modified {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d) !important;
+/* File state colors — specificity beats inherited color from .tab.active */
+.tab .tab-name.modified,
+.tab.active .tab-name.modified {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
 }
-.tab .tab-name.added {
-  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991) !important;
+.tab .tab-name.added,
+.tab.active .tab-name.added {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
-.tab .tab-name.deleted {
-  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39) !important;
+.tab .tab-name.deleted,
+.tab.active .tab-name.deleted {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
 }
-.tab .tab-name.untracked {
-  color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991) !important;
+.tab .tab-name.untracked,
+.tab.active .tab-name.untracked {
+  color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
 }
-.tab .tab-name.ignored {
-  color: var(--vscode-gitDecoration-ignoredResourceForeground, #8c8c8c) !important;
+.tab .tab-name.ignored,
+.tab.active .tab-name.ignored {
+  color: var(--vscode-gitDecoration-ignoredResourceForeground, #8c8c8c);
 }
-.tab .tab-name.conflict {
-  color: var(--vscode-gitDecoration-conflictingResourceForeground, #e51400) !important;
+.tab .tab-name.conflict,
+.tab.active .tab-name.conflict {
+  color: var(--vscode-gitDecoration-conflictingResourceForeground, #e51400);
 }
-.tab .tab-name.warning {
-  color: var(--vscode-editorWarning-foreground, #cca700) !important;
+.tab .tab-name.warning,
+.tab.active .tab-name.warning {
+  color: var(--vscode-editorWarning-foreground, #cca700);
 }
-.tab .tab-name.error {
-  color: var(--vscode-editorError-foreground, #f48771) !important;
+.tab .tab-name.error,
+.tab.active .tab-name.error {
+  color: var(--vscode-editorError-foreground, #f48771);
 }
 .tab-path {
   white-space: nowrap;

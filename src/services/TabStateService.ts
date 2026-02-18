@@ -11,6 +11,7 @@ import { SideTabGroup } from '../models/SideTabGroup';
 export class TabStateService {
   private tabs   : Map<string, SideTab>      = new Map();
   private groups : Map<number, SideTabGroup> = new Map();
+  private _isBulkLoading                     = false;
   private _onDidChangeState                  = new vscode.EventEmitter<void>();
   readonly onDidChangeState                  = this._onDidChangeState.event;
   private _onDidChangeStateSilent            = new vscode.EventEmitter<void>();
@@ -29,7 +30,7 @@ export class TabStateService {
       }
     }
 
-    this._onDidChangeState.fire();
+    if (!this._isBulkLoading) { this._onDidChangeState.fire(); }
   }
 
   // Remove a tab by id and clean it from its group.
@@ -90,6 +91,7 @@ export class TabStateService {
 
   // Replace all tabs with a new set (used during full sync).
   replaceTabs(tabs: SideTab[]): void {
+    this._isBulkLoading = true;
     this.tabs.clear();
 
     // Clear tabs from all groups
@@ -98,6 +100,8 @@ export class TabStateService {
     });
 
     tabs.forEach(tab => this.addTab(tab));
+    this._isBulkLoading = false;
+    this._onDidChangeState.fire();
   }
 
   //- Group management

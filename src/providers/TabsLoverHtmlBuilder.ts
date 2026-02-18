@@ -116,6 +116,17 @@ export class TabsLoverHtmlBuilder {
       }
     });
 
+    // Partial updates from extension host (avoids full HTML rebuild)
+    window.addEventListener('message', e => {
+      const msg = e.data;
+      if (msg.type === 'updateActiveTab') {
+        const activeSet = new Set(msg.activeTabIds);
+        document.querySelectorAll('.tab').forEach(t => {
+          t.classList.toggle('active', activeSet.has(t.dataset.tabid));
+        });
+      }
+    });
+
     ${dragDropScript}
   </script>
 </body>
