@@ -3,8 +3,12 @@
   "displayName": "Tabs Lover",
   "description": "Vertical tabs panel with advanced features",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kailuss/tabs-lover"
+  },
   "engines": {
-    "vscode": "^1.108.0"
+    "vscode": "^1.109.0"
   },
   "categories": [
     "Other"
