@@ -17,7 +17,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'tabsLover';
 
   private _view?: vscode.WebviewView;
-  private _refreshScheduled = false;
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _fullRefreshPending = false;
   private readonly htmlBuilder: TabsLoverHtmlBuilder;
 
   constructor(
@@ -30,9 +31,10 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     private readonly fileActionRegistry: FileActionRegistry,
   ) {
     this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context, fileActionRegistry);
-    // Re-render on every state change
+    // Full rebuild on structural changes
     stateService.onDidChangeState(() => this.refresh());
-    stateService.onDidChangeStateSilent(() => this.refresh());
+    // Partial update for lightweight changes (active tab only)
+    stateService.onDidChangeStateSilent(() => this.refreshSilent());
   }
 
   //= WEBVIEW LIFECYCLE
@@ -59,11 +61,12 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
    * Pequeño debounce para evitar repintados repetidos cuando cambian muchos eventos.
    */
   refresh(): void {
-    if (!this._view || this._refreshScheduled) { return; }
-    this._refreshScheduled = true;
-    // Micro-debounce: coalesce rapid-fire events within the same tick
-    setTimeout(async () => {
-      this._refreshScheduled = false;
+    if (!this._view) { return; }
+    this._fullRefreshPending = true;
+    if (this._debounceTimer) { clearTimeout(this._debounceTimer); }
+    this._debounceTimer = setTimeout(async () => {
+      this._debounceTimer = null;
+      this._fullRefreshPending = false;
       if (!this._view) { return; }
 
       const config       = getConfiguration();
@@ -79,7 +82,27 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         copilotReady,
         config.enableDragDrop,
       );
-    }, 0);
+    }, 30);
+  }
+
+  /**
+   * Envía una actualización parcial al webview (solo estado activo).
+   * Evita reconstruir todo el HTML cuando solo cambia la pestaña activa.
+   */
+  private refreshSilent(): void {
+    if (!this._view || this._fullRefreshPending) { return; }
+
+    const activeTabIds: string[] = [];
+    for (const group of this.stateService.getGroups()) {
+      for (const tab of this.stateService.getTabsInGroup(group.id)) {
+        if (tab.state.isActive) { activeTabIds.push(tab.metadata.id); }
+      }
+    }
+
+    this._view.webview.postMessage({
+      type: 'updateActiveTab',
+      activeTabIds,
+    });
   }
 
 
