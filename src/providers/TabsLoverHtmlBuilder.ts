@@ -5,8 +5,6 @@ import { SideTabGroup }          from '../models/SideTabGroup';
 import { FileActionRegistry }    from '../services/FileActionRegistry';
 import { getStateIndicator }     from '../utils/stateIndicator';
 import { resolveBuiltInCodicon } from '../utils/builtinIcons';
-import { getDragDropScript }     from '../webview/dragDropScript';
-import { getWebviewScript }      from '../webview/webviewScript';
 
 /**
  * Builder encargado de generar el HTML/CSS del webview de tabs.
@@ -43,6 +41,12 @@ export class TabsLoverHtmlBuilder {
     const webviewCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'src', 'styles', 'webview.css')
     );
+    const webviewScriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, 'src', 'webview', 'webview.js')
+    );
+    const dragDropScriptUri = enableDragDrop
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'src', 'webview', 'dragdrop.js'))
+      : null;
 
     let tabsHtml = '';
 
@@ -58,8 +62,6 @@ export class TabsLoverHtmlBuilder {
       }
     }
 
-    const script = getWebviewScript(enableDragDrop ? getDragDropScript() : '');
-
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,7 +72,8 @@ export class TabsLoverHtmlBuilder {
 </head>
 <body>
   ${tabsHtml || '<div class="empty">No open tabs</div>'}
-  <script>${script}</script>
+  <script src="${webviewScriptUri}"></script>
+  ${dragDropScriptUri ? `<script src="${dragDropScriptUri}"></script>` : ''}
 </body>
 </html>`;
   }
