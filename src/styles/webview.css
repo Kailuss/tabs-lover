@@ -60,7 +60,7 @@ body {
   background       : var(--vscode-list-activeSelectionBackground, var(--vscode-sideBar-background));
   border-left      : 5px solid var(--vscode-focusBorder, #007acc);
   will-change      : transform;
-  transition       : none !important;
+  transition       : none;
 }
 
 /* Placeholder invisible: ocupa el espacio original de la tab arrastrada */
@@ -187,7 +187,7 @@ body.drag-active .tab[data-pinned="true"] {
   margin-top: 1px;
 }
 
-/* State dot (isDirty) — sits at the right edge */
+/* State indicator — sits at the right edge, colored per state */
 .tab-state {
   flex: 0 0 auto;
   display: flex;
@@ -195,12 +195,20 @@ body.drag-active .tab[data-pinned="true"] {
   justify-content: center;
   width: 22px;
   height: 22px;
-  font-size: 16px;
-  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  font-size: 14px;
 }
-/* Hide dirty dot on hover (replaced by close) */
+.tab-state.state-modified  { color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d); }
+.tab-state.state-added     { color: var(--vscode-gitDecoration-addedResourceForeground, #73c991); }
+.tab-state.state-deleted   { color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39); }
+.tab-state.state-untracked { color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991); }
+.tab-state.state-ignored   { color: var(--vscode-gitDecoration-ignoredResourceForeground, #8c8c8c); }
+.tab-state.state-conflict  { color: var(--vscode-gitDecoration-conflictingResourceForeground, #e51400); }
+.tab-state.state-warning   { color: var(--vscode-editorWarning-foreground, #cca700); }
+.tab-state.state-error     { color: var(--vscode-editorError-foreground, #f48771); }
+.tab-state.state-dirty     { color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d); }
+/* Hide state indicator on hover (replaced by action buttons) */
 .tab:hover .tab-state { display: none; }
-/* When not dirty and not hovered, keep placeholder width */
+/* When clean and not hovered, keep placeholder width */
 .tab-state.clean { visibility: hidden; }
 
 /* ===== Action buttons ===== */
