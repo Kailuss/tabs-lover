@@ -3,12 +3,8 @@
   "displayName": "Tabs Lover",
   "description": "Vertical tabs panel with advanced features",
   "version": "0.0.1",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Kailuss/tabs-lover"
-  },
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.108.0"
   },
   "categories": [
     "Other"
@@ -30,154 +26,154 @@
     "views": {
       "tabsLoverContainer": [
         {
-          "type": "webview",
-          "id": "tabsLover",
-          "name": "Tabs Lover",
-          "icon": "./icon.png"
+          "type" : "webview",
+          "id"   : "tabsLover",
+          "name" : "Tabs Lover",
+          "icon" : "./icon.png"
         }
       ]
     },
     "commands": [
       {
-        "command": "tabsLover.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.refresh",
+        "title"    :"Refresh",
+        "icon"     :"$(refresh)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.openTab",
-        "title": "Open Tab",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.openTab",
+        "title"    :"Open Tab",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.closeTab",
-        "title": "Close Tab",
-        "icon": "$(close)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.closeTab",
+        "title"    :"Close Tab",
+        "icon"     :"$(close)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.closeOthers",
-        "title": "Close Others",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.closeOthers",
+        "title"    :"Close Others",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.closeToRight",
-        "title": "Close to the Right",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.closeToRight",
+        "title"    :"Close to the Right",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.closeAll",
-        "title": "Close All",
-        "icon": "$(close-all)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.closeAll",
+        "title"    :"Close All",
+        "icon"     :"$(close-all)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.pinTab",
-        "title": "Pin Tab",
-        "icon": "$(pinned)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.pinTab",
+        "title"    :"Pin Tab",
+        "icon"     :"$(pinned)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.unpinTab",
-        "title": "Unpin Tab",
-        "icon": "$(pin)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.unpinTab",
+        "title"    :"Unpin Tab",
+        "icon"     :"$(pin)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.revealInExplorer",
-        "title": "Reveal in Explorer",
-        "icon": "$(go-to-file)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.revealInExplorer",
+        "title"    :"Reveal in Explorer",
+        "icon"     :"$(go-to-file)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.copyRelativePath",
-        "title": "Copy Relative Path",
-        "icon": "$(clippy)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.copyRelativePath",
+        "title"    :"Copy Relative Path",
+        "icon"     :"$(clippy)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.copyFileContents",
-        "title": "Copy File Contents",
-        "icon": "$(copy)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.copyFileContents",
+        "title"    :"Copy File Contents",
+        "icon"     :"$(copy)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.compareWithActive",
-        "title": "Compare with Active Editor",
-        "icon": "$(diff)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.compareWithActive",
+        "title"    :"Compare with Active Editor",
+        "icon"     :"$(diff)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.moveToGroup",
-        "title": "Move to Group…",
-        "icon": "$(split-horizontal)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.moveToGroup",
+        "title"    :"Move to Group…",
+        "icon"     :"$(split-horizontal)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.addToCopilotChat",
-        "title": "Add to Copilot Chat",
-        "icon": "$(add)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.addToCopilotChat",
+        "title"    :"Add to Copilot Chat",
+        "icon"     :"$(add)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.addMultipleToCopilotChat",
-        "title": "Add Files to Copilot Chat…",
-        "icon": "$(sparkle)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.addMultipleToCopilotChat",
+        "title"    :"Add Files to Copilot Chat…",
+        "icon"     :"$(sparkle)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.closeGroup",
-        "title": "Close Group",
-        "icon": "$(close-all)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.closeGroup",
+        "title"    :"Close Group",
+        "icon"     :"$(close-all)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.copyPath",
-        "title": "Copy Path",
-        "icon": "$(copy)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.copyPath",
+        "title"    :"Copy Path",
+        "icon"     :"$(copy)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.openTimeline",
-        "title": "Open Timeline",
-        "icon": "$(history)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.openTimeline",
+        "title"    :"Open Timeline",
+        "icon"     :"$(history)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.splitRight",
-        "title": "Split Right",
-        "icon": "$(split-horizontal)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.splitRight",
+        "title"    :"Split Right",
+        "icon"     :"$(split-horizontal)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.openChanges",
-        "title": "Open Changes",
-        "icon": "$(git-compare)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.openChanges",
+        "title"    :"Open Changes",
+        "icon"     :"$(git-compare)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.revealInFileExplorer",
-        "title": "Reveal in File Explorer",
-        "icon": "$(folder-opened)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.revealInFileExplorer",
+        "title"    :"Reveal in File Explorer",
+        "icon"     :"$(folder-opened)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.revealInExplorerView",
-        "title": "Reveal in Explorer View",
-        "icon": "$(files)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.revealInExplorerView",
+        "title"    :"Reveal in Explorer View",
+        "icon"     :"$(files)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.moveToNewWindow",
-        "title": "Move to New Window",
-        "icon": "$(multiple-windows)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.moveToNewWindow",
+        "title"    :"Move to New Window",
+        "icon"     :"$(multiple-windows)",
+        "category" :"Tabs Lover"
       },
       {
-        "command": "tabsLover.duplicateFile",
-        "title": "Duplicate File",
-        "icon": "$(files)",
-        "category": "Tabs Lover"
+        "command"  :"tabsLover.duplicateFile",
+        "title"    :"Duplicate File",
+        "icon"     :"$(files)",
+        "category" :"Tabs Lover"
       }
     ],
     "menus": {
