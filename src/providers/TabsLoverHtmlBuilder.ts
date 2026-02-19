@@ -81,7 +81,7 @@ export class TabsLoverHtmlBuilder {
   // ─────────────────────────── Renderizado ─────────────────────────────────────
 
   private renderGroupHeader(group: SideTabGroup): string {
-    const marker = group.isActive ? ' ● Active' : '';
+    const marker = group.isActive ? ' (Active)' : '';
     return `<div class="group-header">
       <span class="codicon codicon-window"></span>
       <span>${this.esc(group.label)}${marker}</span>
