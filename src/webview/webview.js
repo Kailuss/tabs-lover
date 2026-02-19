@@ -56,4 +56,31 @@ window.addEventListener('message', e => {
       t.classList.toggle('active', activeSet.has(t.dataset.tabid));
     });
   }
+  
+  if (msg.type === 'tabStateChanged') {
+    const tab = document.querySelector(`.tab[data-tabid="${msg.tabId}"]`);
+    if (tab && !tab.classList.contains('closing')) {
+      const tabName = tab.querySelector('.tab-name');
+      const tabState = tab.querySelector('.tab-state');
+      
+      if (tabName) {
+        // Remover clases de estado anteriores
+        tabName.className = 'tab-name';
+        // Agregar nueva clase de estado
+        if (msg.stateClass) {
+          tabName.className = 'tab-name' + msg.stateClass;
+        }
+        // Aplicar animación de cambio
+        tabName.classList.add('changing');
+        setTimeout(() => {
+          tabName.classList.remove('changing');
+        }, 1000);
+      }
+      
+      // Actualizar el indicador de estado
+      if (tabState && msg.stateHtml) {
+        tabState.outerHTML = msg.stateHtml;
+      }
+    }
+  }
 });

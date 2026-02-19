@@ -151,7 +151,7 @@ export class TabSyncService {
         tab.state.gitStatus !== newGitStatus) {
       tab.state.diagnosticSeverity = newDiagnosticSeverity;
       tab.state.gitStatus = newGitStatus;
-      this.stateService.updateTab(tab);
+      this.stateService.updateTabStateWithAnimation(tab);
     }
   }
 

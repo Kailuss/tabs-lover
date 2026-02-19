@@ -35,6 +35,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     stateService.onDidChangeState(() => this.refresh());
     // Partial update for lightweight changes (active tab only)
     stateService.onDidChangeStateSilent(() => this.refreshSilent());
+    // Notify tab state changes for animation
+    stateService.onDidChangeTabState((tabId) => this.notifyTabStateChanged(tabId));
   }
 
   //= WEBVIEW LIFECYCLE
@@ -102,6 +104,27 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     this._view.webview.postMessage({
       type: 'updateActiveTab',
       activeTabIds,
+    });
+  }
+
+  /**
+   * Notifica al webview que el estado de una tab ha cambiado (diagnóstico o git status).
+   * Envía el nuevo estado para actualización granular sin reconstruir el HTML.
+   */
+  async notifyTabStateChanged(tabId: string): Promise<void> {
+    if (!this._view || this._fullRefreshPending) { return; }
+
+    const tab = this.stateService.getTab(tabId);
+    if (!tab) { return; }
+
+    const { getStateIndicator } = await import('../utils/stateIndicator.js');
+    const stateIndicator = getStateIndicator(tab);
+
+    this._view.webview.postMessage({
+      type: 'tabStateChanged',
+      tabId,
+      stateClass: stateIndicator.nameClass,
+      stateHtml: stateIndicator.html,
     });
   }
 

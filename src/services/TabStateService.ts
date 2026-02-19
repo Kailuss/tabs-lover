@@ -16,6 +16,8 @@ export class TabStateService {
   readonly onDidChangeState                  = this._onDidChangeState.event;
   private _onDidChangeStateSilent            = new vscode.EventEmitter<void>();
   readonly onDidChangeStateSilent            = this._onDidChangeStateSilent.event;
+  private _onDidChangeTabState               = new vscode.EventEmitter<string>();
+  readonly onDidChangeTabState               = this._onDidChangeTabState.event;
 
   //- Tab management
 
@@ -74,6 +76,23 @@ export class TabStateService {
       }
     }
     this._onDidChangeStateSilent.fire();
+  }
+
+  // Update a tab's diagnostic/git state and notify for animation.
+  updateTabStateWithAnimation(tab: SideTab): void {
+    this.tabs.set(tab.metadata.id, tab);
+
+    const group = this.groups.get(tab.state.groupId);
+    if (group) {
+      const index = group.tabs.findIndex(t => t.metadata.id === tab.metadata.id);
+      if (index !== -1) {
+        group.tabs[index] = tab;
+      }
+    }
+    
+    // Solo dispara el evento de cambio de estado para la animación
+    // NO dispara _onDidChangeState para evitar rebuild completo
+    this._onDidChangeTabState.fire(tab.metadata.id);
   }
 
   getTab(id: string): SideTab | undefined {
