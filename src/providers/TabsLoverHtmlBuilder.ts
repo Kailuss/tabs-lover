@@ -26,15 +26,66 @@ export class TabsLoverHtmlBuilder {
 
   //= HTML PRINCIPAL
 
+  // Overload preserving the original parameter order (getTabsInGroup as 3rd argument)
+  async buildHtml(
+    webview        : vscode.Webview,
+    groups         : SideTabGroup[],
+    getTabsInGroup : (groupId: number) => SideTab[],
+    tabHeight      : number,
+    showPath       : boolean,
+    copilotReady   : boolean,
+    enableDragDrop?: boolean,
+  ): Promise<string>;
+
+  // Overload for the new parameter order (getTabsInGroup as last argument)
   async buildHtml(
     webview        : vscode.Webview,
     groups         : SideTabGroup[],
     tabHeight      : number,
     showPath       : boolean,
     copilotReady   : boolean,
-    enableDragDrop : boolean = false,
+    enableDragDrop : boolean,
     getTabsInGroup : (groupId: number) => SideTab[],
+  ): Promise<string>;
+
+  // Implementation supporting both overloads
+  async buildHtml(
+    webview        : vscode.Webview,
+    groups         : SideTabGroup[],
+    arg3           : number | ((groupId: number) => SideTab[]),
+    arg4?          : number | boolean,
+    arg5?          : boolean,
+    arg6?          : boolean,
+    arg7?          : boolean | ((groupId: number) => SideTab[]),
   ): Promise<string> {
+    let tabHeight      : number;
+    let showPath       : boolean;
+    let copilotReady   : boolean;
+    let enableDragDrop : boolean = false;
+    let getTabsInGroup : (groupId: number) => SideTab[];
+
+   // Detect whether we're using the old or new parameter order
+    if (typeof arg3 === 'function') {
+      // Original order:
+      // buildHtml(webview, groups, getTabsInGroup, tabHeight, showPath, copilotReady, enableDragDrop?)
+      getTabsInGroup = arg3;
+      tabHeight      = arg4 as number;
+      showPath       = arg5 as boolean;
+      copilotReady   = arg6 as boolean;
+      if (typeof arg7 === 'boolean') {
+        enableDragDrop = arg7;
+      }
+    } else {
+      // New order:
+      // buildHtml(webview, groups, tabHeight, showPath, copilotReady, enableDragDrop, getTabsInGroup)
+      tabHeight = arg3;
+      showPath  = arg4 as boolean;
+      copilotReady = arg5 as boolean;
+      if (typeof arg6 === 'boolean') {
+        enableDragDrop = arg6;
+      }
+      getTabsInGroup = arg7 as (groupId: number) => SideTab[];
+    }
     const codiconCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css')
     );

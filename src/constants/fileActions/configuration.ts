@@ -72,11 +72,11 @@ export const CONFIGURATION_ACTIONS: FileAction[] = [
         { modal: true },
         'Yes, Format All'
       );
-      
+
       if (!confirm) {
         return;
       }
-      
+
       const terminal = vscode.window.createTerminal({ name: 'Format Workspace' });
       terminal.show();
       terminal.sendText('npx prettier --write .');

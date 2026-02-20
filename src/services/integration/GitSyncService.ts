@@ -132,8 +132,6 @@ export class GitSyncService {
         const finalStatus = workingStatus ?? indexStatus ?? null;
         console.log('[GitSync] Final status for', path.basename(uri.fsPath), ':', finalStatus);
         return finalStatus;
-        console.log('[GitSync] Final status for', path.basename(uri.fsPath), ':', finalStatus);
-        return finalStatus;
       }
     } catch {
       // Silently fail if git is not available
