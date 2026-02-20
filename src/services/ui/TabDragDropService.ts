@@ -1,5 +1,5 @@
-import { TabStateService } from './TabStateService';
-import { SideTab }         from '../models/SideTab';
+import { TabStateService } from '../core/TabStateService';
+import { SideTab }         from '../../models/SideTab';
 
 /**
  * Servicio dedicado a la gestión de drag & drop de pestañas.

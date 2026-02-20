@@ -1,6 +1,6 @@
 import * as vscode      from 'vscode';
-import { SideTab }      from '../models/SideTab';
-import { SideTabGroup } from '../models/SideTabGroup';
+import { SideTab }      from '../../models/SideTab';
+import { SideTabGroup } from '../../models/SideTabGroup';
 
 /**
  * Almacén en memoria de pestañas y grupos — la "fuente de la verdad" para la UI.

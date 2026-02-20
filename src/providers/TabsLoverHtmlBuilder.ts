@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { TabIconManager }        from '../services/TabIconManager';
+import { TabIconManager }        from '../services/ui/TabIconManager';
 import { SideTab }               from '../models/SideTab';
 import { SideTabGroup }          from '../models/SideTabGroup';
-import { FileActionRegistry }    from '../services/FileActionRegistry';
+import { FileActionRegistry }    from '../services/registry/FileActionRegistry';
 import { getStateIndicator }     from '../utils/stateIndicator';
 import { resolveBuiltInCodicon } from '../utils/builtinIcons';
 
@@ -11,10 +11,10 @@ import { resolveBuiltInCodicon } from '../utils/builtinIcons';
  * Separado del provider para mantener responsabilidades claras y facilitar testing.
  *
  * Lógica de presentación delegada a módulos específicos:
- *  - getStateIndicator()    → utils/stateIndicator.ts
+ *  - getStateIndicator()     → utils/stateIndicator.ts
  *  - resolveBuiltInCodicon() → utils/builtinIcons.ts
- *  - getWebviewScript()     → webview/webviewScript.ts
- *  - getDragDropScript()    → webview/dragDropScript.ts
+ *  - getWebviewScript()      → webview/webviewScript.ts
+ *  - getDragDropScript()     → webview/dragDropScript.ts
  */
 export class TabsLoverHtmlBuilder {
   constructor(
@@ -24,16 +24,16 @@ export class TabsLoverHtmlBuilder {
     private readonly fileActionRegistry?: FileActionRegistry,
   ) {}
 
-  // ─────────────────────────── HTML principal ──────────────────────────────────
+  //= HTML PRINCIPAL
 
   async buildHtml(
     webview        : vscode.Webview,
     groups         : SideTabGroup[],
-    getTabsInGroup : (groupId: number) => SideTab[],
     tabHeight      : number,
     showPath       : boolean,
     copilotReady   : boolean,
     enableDragDrop : boolean = false,
+    getTabsInGroup : (groupId: number) => SideTab[],
   ): Promise<string> {
     const codiconCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css')
@@ -78,7 +78,7 @@ export class TabsLoverHtmlBuilder {
 </html>`;
   }
 
-  // ─────────────────────────── Renderizado ─────────────────────────────────────
+  //= RENDERIZADO
 
   private renderGroupHeader(group: SideTabGroup): string {
     const marker = group.isActive ? ' (Active)' : '';
@@ -151,7 +151,7 @@ export class TabsLoverHtmlBuilder {
     </div>`;
   }
 
-  // ─────────────────────────── Iconos ──────────────────────────────────────────
+  //= ICONOS
 
   private async getIconHtml(tab: SideTab): Promise<string> {
     const { tabType, viewType, label, uri } = tab.metadata;
@@ -186,7 +186,7 @@ export class TabsLoverHtmlBuilder {
     </svg>`;
   }
 
-  // ─────────────────────────── Botones de acción ───────────────────────────────
+  //= BOTONES DE ACCIÓN
 
   private renderFileActionButton(tab: SideTab): string {
     if (!this.fileActionRegistry || !tab.metadata.uri) { return ''; }
@@ -197,7 +197,7 @@ export class TabsLoverHtmlBuilder {
     return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;
   }
 
-  // ─────────────────────────── Utilidades ──────────────────────────────────────
+  //= UTILIDADES
 
   /** Escapa caracteres especiales para insertar texto de forma segura en HTML. */
   private esc(s: string): string {

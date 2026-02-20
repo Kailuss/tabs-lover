@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
-import { TabStateService }          from '../services/TabStateService';
-import { TabIconManager }           from '../services/TabIconManager';
-import { CopilotService }           from '../services/CopilotService';
-import { TabDragDropService }       from '../services/TabDragDropService';
-import { FileActionRegistry }      from '../services/FileActionRegistry';
+import { TabStateService }          from '../services/core/TabStateService';
+import { TabIconManager }           from '../services/ui/TabIconManager';
+import { CopilotService }           from '../services/integration/CopilotService';
+import { TabDragDropService }       from '../services/ui/TabDragDropService';
+import { FileActionRegistry }      from '../services/registry/FileActionRegistry';
 import { SideTab }                  from '../models/SideTab';
 import { getConfiguration }         from '../constants/styles';
 import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
+import { TabContextMenu }           from './TabContextMenu';
 
 /**
  * Proveedor del Webview que coordina la vista de pestañas.
@@ -20,6 +21,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _fullRefreshPending = false;
   private readonly htmlBuilder: TabsLoverHtmlBuilder;
+  private readonly contextMenu: TabContextMenu;
 
   constructor(
     private readonly _extensionUri  : vscode.Uri,
@@ -31,6 +33,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     private readonly fileActionRegistry: FileActionRegistry,
   ) {
     this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context, fileActionRegistry);
+    this.contextMenu = new TabContextMenu(stateService, copilotService);
     // Full rebuild on structural changes
     stateService.onDidChangeState(() => this.refresh());
     // Partial update for lightweight changes (active tab only)
@@ -78,11 +81,11 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       this._view.webview.html = await this.htmlBuilder.buildHtml(
         this._view.webview,
         groups,
-        (groupId) => this.stateService.getTabsInGroup(groupId),
         config.tabHeight,
         config.showFilePath,
         copilotReady,
         config.enableDragDrop,
+        (groupId) => this.stateService.getTabsInGroup(groupId),
       );
     }, 30);
   }
@@ -166,7 +169,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       }
       case 'contextMenu': {
         const tab = this.findTab(msg.tabId);
-        if (tab) { await this.showContextMenu(tab); }
+        if (tab) { await this.contextMenu.show(tab); }
         break;
       }
       case 'dropTab': {
@@ -193,75 +196,5 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
 
   private findTab(id: string): SideTab | undefined {
     return this.stateService.getTab(id);
-  }
-
-  //= CONTEXT MENU
-
-  private async showContextMenu(tab: SideTab): Promise<void> {
-    const hasUri = !!tab.metadata.uri;
-    const hasMultipleGroups = this.stateService.getGroups().length > 1;
-    const items: vscode.QuickPickItem[] = [
-      { label: '$(close)  Close' },
-      { label: '$(close-all)  Close Others' },
-      { label: '$(close-all)  Close to the Right' },
-      { label: '', kind: vscode.QuickPickItemKind.Separator },
-      { label: tab.state.isPinned ? '$(pin)  Unpin' : '$(pinned)  Pin' },
-    ];
-
-    if (hasMultipleGroups) {
-      items.push(
-        { label: '', kind: vscode.QuickPickItemKind.Separator },
-        { label: '$(close-all)  Close Group' },
-      );
-    }
-
-    if (hasUri) {
-      items.push(
-        { label: '', kind: vscode.QuickPickItemKind.Separator },
-        { label: '$(files)  Reveal in Explorer View' },
-        { label: '$(folder-opened)  Reveal in File Explorer' },
-        { label: '$(history)  Open Timeline' },
-        { label: '', kind: vscode.QuickPickItemKind.Separator },
-        { label: '$(clippy)  Copy Relative Path' },
-        { label: '$(copy)  Copy Path' },
-        { label: '$(copy)  Copy File Contents' },
-        { label: '$(files)  Duplicate File' },
-        { label: '', kind: vscode.QuickPickItemKind.Separator },
-        { label: '$(diff)  Compare with Active Editor' },
-        { label: '$(git-compare)  Open Changes' },
-        { label: '$(split-horizontal)  Split Right' },
-        { label: '$(multiple-windows)  Move to New Window' },
-      );
-    }
-
-    if (hasUri && this.copilotService.isAvailable()) {
-      items.push(
-        { label: '', kind: vscode.QuickPickItemKind.Separator },
-        { label: '$(attach)  Add to Copilot Chat' },
-      );
-    }
-
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: tab.metadata.label });
-    if (!pick) { return; }
-
-    const label = pick.label;
-    if      (label.includes('Close Others'))              { await tab.closeOthers(); }
-    else if (label.includes('Close to the Right'))        { await tab.closeToRight(); }
-    else if (label.includes('Close Group'))               { await tab.closeGroup(); }
-    else if (label.includes('Close'))                     { await tab.close(); }
-    else if (label.includes('Unpin'))                     { await tab.unpin();  this.stateService.reorderOnUnpin(tab.metadata.id); }
-    else if (label.includes('Pin'))                       { await tab.pin();    this.stateService.reorderOnPin(tab.metadata.id); }
-    else if (label.includes('Reveal in Explorer View'))   { await tab.revealInExplorerView(); }
-    else if (label.includes('Reveal in File Explorer'))   { await tab.revealInFileExplorer(); }
-    else if (label.includes('Open Timeline'))             { await tab.openTimeline(); }
-    else if (label.includes('Copy Relative Path'))        { await tab.copyRelativePath(); }
-    else if (label.includes('Copy Path'))                 { await tab.copyPath(); }
-    else if (label.includes('Copy File Contents'))        { await tab.copyFileContents(); }
-    else if (label.includes('Duplicate File'))            { await tab.duplicateFile(); }
-    else if (label.includes('Compare'))                   { await tab.compareWithActive(); }
-    else if (label.includes('Open Changes'))              { await tab.openChanges(); }
-    else if (label.includes('Split Right'))               { await tab.splitRight(); }
-    else if (label.includes('Move to New Window'))        { await tab.moveToNewWindow(); }
-    else if (label.includes('Add to Copilot Chat'))       { await this.copilotService.addFileToChat(tab.metadata.uri); }
   }
 }
