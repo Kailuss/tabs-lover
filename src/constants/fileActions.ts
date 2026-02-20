@@ -267,9 +267,7 @@ export const BUILTIN_ACTIONS: FileAction[] = [
         { placeHolder: 'Choose action for .env file' }
       );
       
-      if (!action) {
-        return;
-      }
+      if (!action) return;
       
       const terminal = vscode.window.createTerminal({ name: 'dotenv-vault' });
       terminal.show();
@@ -311,9 +309,7 @@ export const BUILTIN_ACTIONS: FileAction[] = [
         'Format all files in workspace with Prettier?',
         { modal: true },
         'Yes, Format All'
-      if (!confirm) {
-        return;
-      }
+      );
       
       if (!confirm) return;
       
