@@ -29,7 +29,7 @@ export function getStateIndicator(tab: SideTab): { html: string; nameClass: stri
       };
     case 'added':
       return {
-        html      : '<span class="tab-state state-added" title="Added"><span class="codicon codicon-diff-added"></span></span>',
+        html      : '<span class="tab-state state-added" title="Added (Staged)"><span class="codicon codicon-diff-added"></span></span>',
         nameClass : ' added',
       };
     case 'deleted':
@@ -39,7 +39,7 @@ export function getStateIndicator(tab: SideTab): { html: string; nameClass: stri
       };
     case 'untracked':
       return {
-        html      : '<span class="tab-state state-untracked" title="Untracked"><span class="codicon codicon-new-file"></span></span>',
+        html      : '<span class="tab-state state-untracked" title="Untracked"><span class="codicon codicon-diff-added"></span></span>',
         nameClass : ' untracked',
       };
     case 'ignored':

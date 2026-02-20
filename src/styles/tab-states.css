@@ -1,13 +1,9 @@
 /* ===== Tab Interactive States ===== */
-.tab:hover,
-.tab:active {
-  background : var(--vscode-list-hoverBackground);
-  transition : background 80ms ease;
-}
+/* No background change on hover to match VS Code tabs */
 .tab.active {
-  border-left-color : var(--vscode-focusBorder, var(--vscode-activityBar-activeBorder, #007acc));
-  background        : var(--vscode-list-activeSelectionBackground);
-  color             : var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+  border-left-color : var(--vscode-tab-activeBorder, var(--vscode-focusBorder, #007acc));
+  background        : var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+  color             : var(--vscode-tab-activeForeground, var(--vscode-foreground));
 }
 
 /* ===== Drag & Drop States ===== */
