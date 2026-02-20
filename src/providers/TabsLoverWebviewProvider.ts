@@ -81,11 +81,11 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       this._view.webview.html = await this.htmlBuilder.buildHtml(
         this._view.webview,
         groups,
-        (groupId) => this.stateService.getTabsInGroup(groupId),
         config.tabHeight,
         config.showFilePath,
         copilotReady,
         config.enableDragDrop,
+        (groupId) => this.stateService.getTabsInGroup(groupId),
       );
     }, 30);
   }
