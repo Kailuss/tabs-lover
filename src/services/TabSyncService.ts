@@ -1,6 +1,7 @@
 import * as vscode                                             from 'vscode';
 import * as path                                               from 'path';
 import { TabStateService }                                     from './TabStateService';
+import { GitSyncService }                                      from './GitSyncService';
 import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../models/SideTab';
 import { createTabGroup }                                      from '../models/SideTabGroup';
 import { formatFilePath }                                      from '../utils/helpers';
@@ -13,19 +14,15 @@ import { formatFilePath }                                      from '../utils/he
  */
 export class TabSyncService {
   private disposables: vscode.Disposable[] = [];
-  private _gitApi: any | null = null;
+  private gitSyncService: GitSyncService;
 
-  constructor(private stateService: TabStateService) {}
+  constructor(private stateService: TabStateService) {
+    this.gitSyncService = new GitSyncService(this.stateService);
+  }
 
   /** Registra los listeners necesarios y realiza una sincronización inicial.
    *  Resultado: el `TabStateService` queda poblado y listo para la UI. */
   activate(context: vscode.ExtensionContext): void {
-    // Cache git API reference (avoid resolving the extension on every call)
-    this._gitApi = this.resolveGitApi();
-    this.disposables.push(
-      vscode.extensions.onDidChange(() => { this._gitApi = this.resolveGitApi(); }),
-    );
-
     this.syncAll();
 
     this.disposables.push(
@@ -50,6 +47,9 @@ export class TabSyncService {
         }
       }),
     );
+
+    // Sincronización/estado Git (servicio dedicado)
+    this.gitSyncService.activate(context);
 
     context.subscriptions.push(...this.disposables);
   }
@@ -88,11 +88,19 @@ export class TabSyncService {
       existing.state.isDirty   = tab.isDirty;
       existing.state.isPinned  = tab.isPinned;
       existing.state.isPreview = tab.isPreview;
-      
+
       // Solo actualizar git/diagnósticos en cambios estructurales (no solo isActive)
       if (!onlyActive && existing.metadata.uri) {
-        existing.state.gitStatus = this.getGitStatus(existing.metadata.uri);
+        const oldGitStatus = existing.state.gitStatus;
+        const oldDiagnostics = existing.state.diagnosticSeverity;
+        existing.state.gitStatus = this.gitSyncService.getGitStatus(existing.metadata.uri);
         existing.state.diagnosticSeverity = this.getDiagnosticSeverity(existing.metadata.uri);
+        if (oldGitStatus !== existing.state.gitStatus || oldDiagnostics !== existing.state.diagnosticSeverity) {
+          console.log('[TabSync] handleTabChanges - updated git/diagnostics:', existing.metadata.label, {
+            gitStatus: { old: oldGitStatus, new: existing.state.gitStatus },
+            diagnostics: { old: oldDiagnostics, new: existing.state.diagnosticSeverity }
+          });
+        }
       }
 
       if (onlyActive) { this.stateService.updateTabSilent(existing); }
@@ -145,10 +153,16 @@ export class TabSyncService {
     if (!tab) { return; }
 
     const newDiagnosticSeverity = this.getDiagnosticSeverity(uri);
-    const newGitStatus = this.getGitStatus(uri);
+    const newGitStatus = this.gitSyncService.getGitStatus(uri);
+
+    console.log('[TabSync] updateTabDiagnostics -', tab.metadata.label, ':', {
+      diagnostics: { old: tab.state.diagnosticSeverity, new: newDiagnosticSeverity },
+      gitStatus: { old: tab.state.gitStatus, new: newGitStatus }
+    });
 
     if (tab.state.diagnosticSeverity !== newDiagnosticSeverity || 
         tab.state.gitStatus !== newGitStatus) {
+      console.log('[TabSync] ✅ Updating tab state with animation for:', tab.metadata.label);
       tab.state.diagnosticSeverity = newDiagnosticSeverity;
       tab.state.gitStatus = newGitStatus;
       this.stateService.updateTabStateWithAnimation(tab);
@@ -332,7 +346,7 @@ export class TabSyncService {
       viewColumn,
       indexInGroup   : index ?? 0,
       lastAccessTime : Date.now(),
-      gitStatus      : uri ? this.getGitStatus(uri) : null,
+      gitStatus      : uri ? this.gitSyncService.getGitStatus(uri) : null,
       diagnosticSeverity : uri ? this.getDiagnosticSeverity(uri) : null,
     };
 
@@ -354,62 +368,6 @@ export class TabSyncService {
     // Webview / unknown tabs have no URI — use a sanitised label
     const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
     return `${tabType}:${safe}-${viewColumn}`;
-  }
-
-  /**
-   * Obtiene el estado de git para un archivo basado en decoraciones SCM.
-   * Utiliza la API de git de VS Code para obtener el estado del archivo.
-   */
-  /** Resolves the git extension API (cached in _gitApi). */
-  private resolveGitApi(): any | null {
-    try {
-      const ext = vscode.extensions.getExtension('vscode.git');
-      return ext?.isActive ? ext.exports?.getAPI(1) ?? null : null;
-    } catch { return null; }
-  }
-
-  private getGitStatus(uri: vscode.Uri): import('../models/SideTab').GitStatus {
-    try {
-      // Lazy init: resolve git API if not yet cached
-      if (!this._gitApi) { this._gitApi = this.resolveGitApi(); }
-      if (!this._gitApi || this._gitApi.repositories.length === 0) { return null; }
-
-      // Buscar el repositorio que contiene este archivo
-      for (const repo of this._gitApi.repositories) {
-        const repoUri = repo.rootUri;
-        if (!uri.fsPath.startsWith(repoUri.fsPath)) { continue; }
-
-        // Buscar el cambio en working tree o index
-        const allChanges = [
-          ...(repo.state.workingTreeChanges || []),
-          ...(repo.state.indexChanges || []),
-          ...(repo.state.mergeChanges || []),
-        ];
-
-        const change = allChanges.find((c: any) => c.uri.fsPath === uri.fsPath);
-
-        if (change) {
-          // Mapear el estado de git a nuestras clases
-          // Status values from git extension API:
-          // 0: INDEX_MODIFIED, 1: INDEX_ADDED, 2: INDEX_DELETED, 3: INDEX_RENAMED, 4: INDEX_COPIED
-          // 5: MODIFIED, 6: DELETED, 7: UNTRACKED, 8: IGNORED, 9: INTENT_TO_ADD
-          const status = change.status;
-          
-          if (status === 1 || status === 7) { return 'untracked'; }  // INDEX_ADDED or UNTRACKED
-          if (status === 0 || status === 5) { return 'modified'; }   // INDEX_MODIFIED or MODIFIED
-          if (status === 2 || status === 6) { return 'deleted'; }    // INDEX_DELETED or DELETED
-          if (status === 8) { return 'ignored'; }                    // IGNORED
-          if (repo.state.mergeChanges && repo.state.mergeChanges.length > 0) {
-            return 'conflict';
-          }
-          
-          return 'modified'; // default for other statuses
-        }
-      }
-    } catch (error) {
-      // Silently fail if git is not available
-    }
-    return null;
   }
 
   /**
@@ -439,5 +397,6 @@ export class TabSyncService {
   dispose(): void {
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
+    this.gitSyncService.dispose();
   }
 }
