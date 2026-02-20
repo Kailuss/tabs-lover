@@ -19,22 +19,53 @@ export class TabIconManager {
   private _iconPathCache     : Map<string, string> = new Map();
   private _isPreloadingIcons : boolean = false;
   private _configListener    : vscode.Disposable | undefined;
+  private _initPromise       : Promise<void> | undefined;
+  private _onDidInitialize   = new vscode.EventEmitter<void>();
+  
+  /** Evento que se dispara cuando el mapa de iconos está listo */
+  public readonly onDidInitialize = this._onDidInitialize.event;
 
   /**
    * Inicializa el gestor de iconos y registra listeners.
    * Llamar una vez desde `activate()`; prepara la tabla de búsqueda del tema.
+   * Devuelve una Promise que se resuelve cuando los iconos están listos.
    */
-  public initialize(context: vscode.ExtensionContext): void { 
+  public initialize(context: vscode.ExtensionContext): Promise<void> { 
     this._configListener = vscode.workspace.onDidChangeConfiguration(async e => {
       if (e.affectsConfiguration('workbench.iconTheme')) {
+        console.log('[TabsLover] Icon theme changed, rebuilding map...');
         this.clearCache();
-        await this.buildIconMap(context);
+        await this.buildIconMap(context, true);
+        this._onDidInitialize.fire();
       }
     });
 
     context.subscriptions.push(this._configListener);
+    context.subscriptions.push(this._onDidInitialize);
 
-    this.buildIconMap(context).catch(err => console.error('[TabsLover] Error building initial icon map:', err));
+    this._initPromise = this.buildIconMap(context)
+      .then(() => {
+        console.log('[TabsLover] Icon map initialized:', {
+          themeId: this._iconThemeId,
+          hasMap: !!this._iconMap,
+          mapSize: this._iconMap ? Object.keys(this._iconMap).length : 0
+        });
+        this._onDidInitialize.fire();
+      })
+      .catch(err => {
+        console.error('[TabsLover] Error building initial icon map:', err);
+      });
+    
+    return this._initPromise;
+  }
+  
+  /**
+   * Espera a que la inicialización esté completa.
+   */
+  public async waitForInit(): Promise<void> {
+    if (this._initPromise) {
+      await this._initPromise;
+    }
   }
 
   /**
@@ -59,6 +90,7 @@ export class TabIconManager {
 
       // Si el tema no cambió y ya tenemos el mapa, no volver a reconstruir.
       if (this._iconThemeId === iconTheme && this._iconMap && !forceRebuild) {
+        console.log('[TabsLover] Icon map already exists for theme:', iconTheme);
         return;
       }
 
@@ -69,19 +101,24 @@ export class TabIconManager {
 
       // Fallback a 'vs-seti' si no encontramos el tema configurado
       if (!ext) {
+        console.log('[TabsLover] Theme not found, trying vs-seti fallback:', iconTheme);
         ext = this.findIconThemeExtension('vs-seti');
         themeId = 'vs-seti';
 
         if (!ext) {
+          console.warn('[TabsLover] No icon theme found (not even vs-seti)');
           this._iconMap     = {};
           this._iconThemeId = iconTheme;
           return;
         }
       }
 
+      console.log('[TabsLover] Building icon map for theme:', themeId, 'from extension:', ext.id);
+
       // Buscar la entrada del tema en el package.json de la extensión
       const themeContribution = ext.packageJSON.contributes.iconThemes.find( (t: any) => t.id === themeId );
       if (!themeContribution) {
+        console.warn('[TabsLover] Theme contribution not found in extension');
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -89,10 +126,12 @@ export class TabIconManager {
 
       // Resolver la ruta absoluta al archivo JSON del tema
       themePath = path.join(ext.extensionPath, themeContribution.path);
+      console.log('[TabsLover] Theme path:', themePath);
 
       try {
         await fsp.access(themePath);
       } catch {
+        console.warn('[TabsLover] Theme file not accessible:', themePath);
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -192,6 +231,22 @@ export class TabIconManager {
         : '';
 
       const cacheKey = `${fileNameLower}|${languageId || ''}`;
+      
+      // Debug: log first few icon lookups
+      const debugIconLookup = !this._iconCache.has(cacheKey) && this._iconCache.size < 3;
+      if (debugIconLookup) {
+        const nameKey = `name:${fileNameLower}`;
+        const extKey = `ext:${extName}`;
+        console.log('[TabsLover] Icon lookup:', { 
+          fileName, 
+          ext: extName, 
+          nameKey,
+          extKey,
+          hasNameMatch: !!this._iconMap![nameKey],
+          hasExtMatch: !!this._iconMap![extKey],
+          sampleKeys: Object.keys(this._iconMap!).slice(0, 20)
+        });
+      }
 
       // Check path cache
       let iconPath = this._iconPathCache.get(cacheKey);
@@ -252,21 +307,53 @@ export class TabIconManager {
           }
         }
 
+        if (debugIconLookup) {
+          console.log('[TabsLover] Icon resolution:', { fileName, iconId, hasIconDef: !!themeJson.iconDefinitions?.[iconId!] });
+        }
+
         if (!iconId || !themeJson.iconDefinitions) {
+          if (debugIconLookup) {
+            console.warn('[TabsLover] Icon lookup failed: no iconId or no iconDefinitions', { iconId, hasDefinitions: !!themeJson.iconDefinitions });
+          }
           return undefined;
         }
 
         const iconDef = themeJson.iconDefinitions[iconId];
         if (!iconDef) {
+          if (debugIconLookup) {
+            console.warn('[TabsLover] Icon lookup failed: iconDef not found for', iconId);
+          }
           return undefined;
         }
 
+        // Check for SVG-based theme (iconPath) or font-based theme (fontCharacter)
         iconPath = iconDef.iconPath || iconDef.path;
+        
+        if (!iconPath && iconDef.fontCharacter) {
+          // Font-based theme (like vs-seti): return special marker to use font rendering
+          // The webview will handle this with CSS @font-face
+          if (debugIconLookup) {
+            console.log('[TabsLover] Font-based icon:', { iconId, char: iconDef.fontCharacter, color: iconDef.fontColor });
+          }
+          
+          // Return a special data structure that the HtmlBuilder will recognize
+          const fontIconData = `font-icon:${iconDef.fontCharacter}:${iconDef.fontColor || '#cccccc'}`;
+          this._iconCache.set(cacheKey, fontIconData);
+          return fontIconData;
+        }
+        
         if (!iconPath) {
+          if (debugIconLookup) {
+            console.warn('[TabsLover] Icon lookup failed: no iconPath or fontCharacter in iconDef', iconDef);
+          }
           return undefined;
         }
 
         this._iconPathCache.set(cacheKey, iconPath);
+        
+        if (debugIconLookup) {
+          console.log('[TabsLover] Icon path resolved:', { iconPath });
+        }
       }
 
       const iconThemeDir = path.dirname(this._iconThemePath!);
@@ -277,6 +364,10 @@ export class TabIconManager {
       }
 
       const absIconPath = path.resolve(iconThemeDir, normalizedIconPath);
+      
+      if (debugIconLookup) {
+        console.log('[TabsLover] Checking icon file:', { absIconPath, themePath: this._iconThemePath });
+      }
 
       try {
         await fsp.access(absIconPath);
@@ -286,14 +377,23 @@ export class TabIconManager {
           await fsp.access(altPath);
           const result = await this.readIconAndConvertToBase64(altPath);
           if (result) { this._iconCache.set(cacheKey, result); }
+          if (debugIconLookup) {
+            console.log('[TabsLover] Icon success (altPath):', { fileName, resultLength: result?.length });
+          }
           return result;
         } catch {
+          if (debugIconLookup) {
+            console.warn('[TabsLover] Icon file not found:', { absIconPath, altPath });
+          }
           return undefined;
         }
       }
 
       const result = await this.readIconAndConvertToBase64(absIconPath, fileName);
       if (result) { this._iconCache.set(cacheKey, result); }
+      if (debugIconLookup) {
+        console.log('[TabsLover] Icon success:', { fileName, resultLength: result?.length });
+      }
       return result;
     } catch (e) {
       console.error(`[TabsLover] Error getting icon for ${fileName}:`, e);

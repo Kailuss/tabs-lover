@@ -35,17 +35,6 @@ export const MEDIA_ACTIONS: FileAction[] = [
     },
   },
 
-  // ── Imágenes: abrir a un lado para previsualizar ──
-  {
-    id      : 'previewImage',
-    icon    : 'file-media',
-    tooltip : 'Preview Image',
-    match   : byExtension('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'),
-    execute : async (uri) => {
-      await vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside });
-    },
-  },
-
   // ── SVG: optimizar con SVGO ──
   {
     id      : 'optimizeSvg',

@@ -1,6 +1,25 @@
 /* ===== Tabs Lover - Main Stylesheet ===== */
 /* This file imports all modular stylesheets */
 
+/* Font-based icon themes (e.g., vs-seti) */
+@font-face {
+  font-family: 'seti';
+  src: url('../fonts/seti.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+.seti-icon {
+  font-family: 'seti', monospace;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+  text-align: center;
+  width: 16px;
+  height: 16px;
+}
+
 @import './base.css';
 @import './group-header.css';
 @import './tab-layout.css';

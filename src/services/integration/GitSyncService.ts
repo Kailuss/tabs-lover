@@ -15,17 +15,14 @@ export class GitSyncService {
   constructor(private stateService: TabStateService) {}
 
   activate(context: vscode.ExtensionContext): void {
-    console.log('[GitSync] 🚀 Activating GitSyncService...');
     this._gitApi = this.resolveGitApi();
 
     // Extension change listener (for when Git extension is installed/enabled)
     this.disposables.push(
       vscode.extensions.onDidChange(() => {
-        console.log('[GitSync] 🔄 Extensions changed, re-initializing...');
         const oldApi = this._gitApi;
         this._gitApi = this.resolveGitApi();
         if (!oldApi && this._gitApi) {
-          console.log('[GitSync] 🎉 Git API now available via extension change');
           this.setupGitListeners();
           this.refreshAllGitStatuses();
         }
@@ -34,11 +31,9 @@ export class GitSyncService {
 
     // Try to initialize immediately if Git is ready
     if (this._gitApi && this._gitApi.repositories.length > 0) {
-      console.log('[GitSync] ✅ Git API available immediately, initializing...');
       this.setupGitListeners();
       this.refreshAllGitStatuses();
     } else {
-      console.log('[GitSync] ⏳ Git API not ready or no repositories, waiting for Git to open repository...');
       
       // Setup listener for when Git opens a repository
       const setupOnRepoOpen = () => {
@@ -46,11 +41,9 @@ export class GitSyncService {
         if (gitApi && !this._gitOpenRepoListenerAttached) {
           this._gitApi = gitApi;
           this._gitOpenRepoListenerAttached = true;
-          console.log('[GitSync] 👂 Listening for repository open...');
           
           this.disposables.push(
             gitApi.onDidOpenRepository((repo: any) => {
-              console.log('[GitSync] 🎉 Repository opened, initializing listeners...');
               this.attachGitRepoListener(repo);
               this.updateGitStatusForRepo(repo);
             }),
@@ -58,7 +51,6 @@ export class GitSyncService {
 
           // If repositories already exist, setup listeners now
           if (gitApi.repositories.length > 0) {
-            console.log('[GitSync] 📦 Found existing repositories, setting up...');
             this.setupGitListeners();
             this.refreshAllGitStatuses();
           }
@@ -71,20 +63,17 @@ export class GitSyncService {
       // Retry after delays
       setTimeout(() => {
         if (!this._gitApi || this._gitApi.repositories.length === 0) {
-          console.log('[GitSync] ⏳ Retry 1: Checking Git API...');
           setupOnRepoOpen();
         }
       }, 500);
 
       setTimeout(() => {
         if (!this._gitApi || this._gitApi.repositories.length === 0) {
-          console.log('[GitSync] ⏳ Retry 2: Checking Git API...');
           setupOnRepoOpen();
         }
       }, 2000);
     }
 
-    console.log('[GitSync] ✅ GitSyncService activated');
     context.subscriptions.push(...this.disposables);
   }
 
@@ -96,7 +85,6 @@ export class GitSyncService {
       if (!this._gitApi) { this._gitApi = this.resolveGitApi(); }
       if (!this._gitApi || this._gitApi.repositories.length === 0) { return null; }
 
-      console.log('[GitSync] getGitStatus called for:', path.basename(uri.fsPath));
 
       for (const repo of this._gitApi.repositories) {
         const repoRoot = this.normalizeFsPath(repo?.rootUri?.fsPath);
@@ -117,20 +105,11 @@ export class GitSyncService {
         const indexStatus = this.mapGitApiStatus(indexChange?.status);
         const workingStatus = this.mapGitApiStatus(workingChange?.status);
 
-        console.log('[GitSync] Status detected -', path.basename(uri.fsPath), ':', {
-          indexStatus,
-          workingStatus,
-          indexChangeRaw: indexChange?.status,
-          workingChangeRaw: workingChange?.status
-        });
-
         if (indexStatus === 'added' && workingStatus === 'modified') {
-          console.log('[GitSync] Returning "modified" for added+modified');
           return 'modified';
         }
 
         const finalStatus = workingStatus ?? indexStatus ?? null;
-        console.log('[GitSync] Final status for', path.basename(uri.fsPath), ':', finalStatus);
         return finalStatus;
       }
     } catch {
@@ -151,10 +130,8 @@ export class GitSyncService {
     try {
       const ext = vscode.extensions.getExtension('vscode.git');
       const api = ext?.isActive ? ext.exports?.getAPI(1) ?? null : null;
-      console.log('[GitSync] Git API resolved:', api ? '✅ Available' : '❌ Not available');
       return api;
     } catch (err) {
-      console.log('[GitSync] ⚠️ Error resolving Git API:', err);
       return null;
     }
   }
@@ -164,11 +141,9 @@ export class GitSyncService {
       if (!this._gitApi) { this._gitApi = this.resolveGitApi(); }
       const gitApi = this._gitApi;
       if (!gitApi) {
-        console.log('[GitSync] ⚠️ Git API not available');
         return;
       }
 
-      console.log('[GitSync] 🔧 Setting up Git listeners, repositories found:', gitApi.repositories.length);
       for (const repo of gitApi.repositories) {
         this.attachGitRepoListener(repo);
       }
@@ -190,29 +165,18 @@ export class GitSyncService {
   private attachGitRepoListener(repo: any): void {
     const repoRoot = this.normalizeFsPath(repo?.rootUri?.fsPath);
     if (!repoRoot) {
-      console.log('[GitSync] ⚠️ Cannot attach listener: invalid repo root');
       return;
     }
     if (this._gitRepoListeners.has(repoRoot)) {
-      console.log('[GitSync] ℹ️ Listener already attached for:', path.basename(repoRoot));
       return;
     }
 
-    console.log('[GitSync] ✅ Attaching listener to repo:', path.basename(repoRoot));
     this._gitRepoListeners.add(repoRoot);
     this.disposables.push(
       repo.state.onDidChange(() => {
-        console.log('[GitSync] 🔄 Repo state changed:', path.basename(repoRoot));
-        console.log('[GitSync] Working tree changes:', repo.state.workingTreeChanges?.length || 0);
-        console.log('[GitSync] Index changes:', repo.state.indexChanges?.length || 0);
         this.updateGitStatusForRepo(repo);
       }),
     );
-    console.log('[GitSync] 📊 Current repo state:', {
-      workingTreeChanges: repo.state.workingTreeChanges?.length || 0,
-      indexChanges: repo.state.indexChanges?.length || 0,
-      mergeChanges: repo.state.mergeChanges?.length || 0
-    });
   }
 
   private refreshAllGitStatuses(): void {
@@ -222,7 +186,6 @@ export class GitSyncService {
 
       const newGitStatus = this.getGitStatus(uri);
       if (tab.state.gitStatus !== newGitStatus) {
-        console.log('[GitSync] refreshAllGitStatuses - updating:', tab.metadata.label, tab.state.gitStatus, '→', newGitStatus);
         tab.state.gitStatus = newGitStatus;
         this.stateService.updateTabStateWithAnimation(tab);
       }
@@ -240,14 +203,9 @@ export class GitSyncService {
       if (!targetPath || !this.isPathInsideRepo(targetPath, repoRoot)) { continue; }
 
       const newGitStatus = this.getGitStatus(uri);
-      console.log('[GitSync] updateGitStatusForRepo -', tab.metadata.label, ':', {
-        oldStatus: tab.state.gitStatus,
-        newStatus: newGitStatus,
-        changed: tab.state.gitStatus !== newGitStatus
-      });
+
       if (tab.state.gitStatus !== newGitStatus) {
         tab.state.gitStatus = newGitStatus;
-        console.log('[GitSync] ✅ Updating tab state with animation for:', tab.metadata.label);
         this.stateService.updateTabStateWithAnimation(tab);
       }
     }
@@ -255,7 +213,6 @@ export class GitSyncService {
 
   private mapGitApiStatus(status: number | undefined): GitStatus {
     const result = this.mapGitApiStatusInternal(status);
-    console.log('[GitSync] mapGitApiStatus:', status, '→', result);
     return result;
   }
 

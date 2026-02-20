@@ -174,6 +174,7 @@ export class TabsLoverHtmlBuilder {
     copilotReady: boolean,
     enableDragDrop: boolean,
   ): Promise<string> {
+    // Pinned tabs primero, orden estable dentro de cada sección
     const sorted = [...tabs].sort((a, b) => {
       if (a.state.isPinned && !b.state.isPinned) return -1;
       if (!a.state.isPinned && b.state.isPinned) return 1;
@@ -242,6 +243,7 @@ export class TabsLoverHtmlBuilder {
 
   //= UTILIDADES
 
+  /** Escapa caracteres especiales para insertar texto de forma segura en HTML. */
   private esc(s: string): string {
     return s
       .replace(/&/g, '&amp;')
@@ -251,6 +253,7 @@ export class TabsLoverHtmlBuilder {
       .replace(/'/g, '&#039;');
   }
 
+  /** Genera un nonce aleatorio para CSP. */
   private generateNonce(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let nonce = '';
@@ -260,4 +263,3 @@ export class TabsLoverHtmlBuilder {
     return nonce;
   }
 }
-

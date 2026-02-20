@@ -51,9 +51,13 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   ): void {
     this._view = webviewView;
 
+    // Configure webview options
+    // localResourceRoots: Allow access to dist/ folder for CSS, JS, and codicons
+    const distUri = vscode.Uri.joinPath(this._extensionUri, 'dist');
+    
     webviewView.webview.options = {
       enableScripts      : true,
-      localResourceRoots : [this._extensionUri],
+      localResourceRoots : [this._extensionUri, distUri],
     };
 
     webviewView.webview.onDidReceiveMessage(msg => this.handleMessage(msg));
@@ -66,6 +70,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
    * Pequeño debounce para evitar repintados repetidos cuando cambian muchos eventos.
    */
   refresh(): void {
+    console.log('[TabsLover] refresh() called, view exists:', !!this._view);
     if (!this._view) { return; }
     this._fullRefreshPending = true;
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); }
@@ -77,6 +82,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       const config       = getConfiguration();
       const groups       = this.stateService.getGroups();
       const copilotReady = this.copilotService.isAvailable();
+      
+      console.log('[TabsLover] Building HTML, groups:', groups.length);
 
       this._view.webview.html = await this.htmlBuilder.buildHtml(
         this._view.webview,
@@ -87,6 +94,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         config.enableDragDrop,
         (groupId) => this.stateService.getTabsInGroup(groupId),
       );
+      
+      console.log('[TabsLover] HTML assigned to webview');
     }, 30);
   }
 
