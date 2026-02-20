@@ -1,0 +1,12 @@
+/* ===== Tabs Lover - Main Stylesheet ===== */
+/* This file imports all modular stylesheets */
+
+@import './base.css';
+@import './group-header.css';
+@import './tab-layout.css';
+@import './tab-states.css';
+@import './tab-animations.css';
+@import './tab-content.css';
+@import './tab-file-states.css';
+@import './tab-actions.css';
+@import './utilities.css';
