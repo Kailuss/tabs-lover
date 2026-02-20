@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TabStateService } from './TabStateService';
-import type { GitStatus } from '../models/SideTab';
+import { TabStateService } from '../core/TabStateService';
+import type { GitStatus } from '../../models/SideTab';
 
 /**
  * Encapsula toda la sincronización con Git (status + listeners de repositorio).

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { FileAction, ResolvedFileAction, BUILTIN_ACTIONS } from '../constants/fileActions';
+import { FileAction, ResolvedFileAction, BUILTIN_ACTIONS } from '../../constants/fileActions';
 
 // Re-export for consumers that import from this module
-export type { FileAction, ResolvedFileAction } from '../constants/fileActions';
+export type { FileAction, ResolvedFileAction } from '../../constants/fileActions';
 
 // ──────────────────────────────── Registry ─────────────────────────────────────
 

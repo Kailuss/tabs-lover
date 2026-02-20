@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { CopilotService } from '../services/CopilotService';
-import { TabStateService } from '../services/TabStateService';
+import { CopilotService } from '../services/integration/CopilotService';
+import { TabStateService } from '../services/core/TabStateService';
 
 /**
  * Registra comandos para añadir archivos al contexto de GitHub Copilot Chat.

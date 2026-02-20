@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { TabStateService }          from '../services/TabStateService';
-import { TabIconManager }           from '../services/TabIconManager';
-import { CopilotService }           from '../services/CopilotService';
-import { TabDragDropService }       from '../services/TabDragDropService';
-import { FileActionRegistry }      from '../services/FileActionRegistry';
+import { TabStateService }          from '../services/core/TabStateService';
+import { TabIconManager }           from '../services/ui/TabIconManager';
+import { CopilotService }           from '../services/integration/CopilotService';
+import { TabDragDropService }       from '../services/ui/TabDragDropService';
+import { FileActionRegistry }      from '../services/registry/FileActionRegistry';
 import { SideTab }                  from '../models/SideTab';
 import { getConfiguration }         from '../constants/styles';
 import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { TabIconManager }        from '../services/TabIconManager';
+import { TabIconManager }        from '../services/ui/TabIconManager';
 import { SideTab }               from '../models/SideTab';
 import { SideTabGroup }          from '../models/SideTabGroup';
-import { FileActionRegistry }    from '../services/FileActionRegistry';
+import { FileActionRegistry }    from '../services/registry/FileActionRegistry';
 import { getStateIndicator }     from '../utils/stateIndicator';
 import { resolveBuiltInCodicon } from '../utils/builtinIcons';
 

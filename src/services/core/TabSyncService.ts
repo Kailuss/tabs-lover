@@ -1,10 +1,10 @@
 import * as vscode                                             from 'vscode';
 import * as path                                               from 'path';
 import { TabStateService }                                     from './TabStateService';
-import { GitSyncService }                                      from './GitSyncService';
-import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../models/SideTab';
-import { createTabGroup }                                      from '../models/SideTabGroup';
-import { formatFilePath }                                      from '../utils/helpers';
+import { GitSyncService }                                      from '../integration/GitSyncService';
+import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../../models/SideTab';
+import { createTabGroup }                                      from '../../models/SideTabGroup';
+import { formatFilePath }                                      from '../../utils/helpers';
 
 /**
  * Mantiene el estado interno de pestañas sincronizado con VS Code.

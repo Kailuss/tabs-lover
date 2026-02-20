@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { TabStateService } from '../services/TabStateService';
+import { TabStateService } from '../services/core/TabStateService';
 
 /**
  * Registra los comandos relacionados con pestañas (abrir, cerrar, mover, etc.).
