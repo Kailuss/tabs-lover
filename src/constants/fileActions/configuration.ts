@@ -27,7 +27,9 @@ export const CONFIGURATION_ACTIONS: FileAction[] = [
         { placeHolder: 'Choose action for .env file' }
       );
       
-      if (!action) return;
+      if (!action) {
+        return;
+      }
       
       const terminal = vscode.window.createTerminal({ name: 'dotenv-vault' });
       terminal.show();
@@ -71,7 +73,9 @@ export const CONFIGURATION_ACTIONS: FileAction[] = [
         'Yes, Format All'
       );
       
-      if (!confirm) return;
+      if (!confirm) {
+        return;
+      }
       
       const terminal = vscode.window.createTerminal({ name: 'Format Workspace' });
       terminal.show();

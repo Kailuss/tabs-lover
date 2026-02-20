@@ -1,67 +1,94 @@
-# Tabs Lover
+# Tabs Lover 💙
 
-A VS Code extension that replaces the native tab bar with a vertical, fully styled tab list in the sidebar.
+**Your tabs, beautifully organized in the sidebar.**
 
-## Features
+Tabs Lover gives you a clean, vertical tab list that replaces VS Code's native horizontal tab bar. All your open files in one elegant sidebar panel — no more horizontal scrolling or lost tabs.
 
-- **Vertical tab list** in a dedicated sidebar panel
-- **40px row height** with file name + relative path on separate lines
-- **4px accent border** on the active tab (uses your theme's focus color)
-- **Real file icons** from your active icon theme (Material Icons, Seti, etc.)
-- **Hover actions** — Pin, Add to Copilot Chat, Close (appear on hover, no layout shift)
-- **isDirty indicator** — modified dot that swaps for close button on hover
-- **All tab types** — Text files, Settings, Extensions, Notebooks, Custom editors
-- **Context menu** — Right-click for Close Others, Reveal in Explorer, Copy Path, Diff, etc.
-- **Copilot Chat integration** — Add files to chat context with one click
-- **Multi-group support** — Groups shown with headers when multiple editor groups are open
+## 🚀 Getting Started
+
+1. **Install** the extension from the VS Code Marketplace
+2. **Open** the Tabs Lover panel from the Activity Bar (look for the icon on the left)
+3. **Enjoy** your organized tabs!
+
+That's it. No configuration needed — it works great out of the box.
+
+## ✨ What You Get
+
+### 📋 Clean Vertical Layout
+- All your tabs in one sidebar panel
+- File name and path on separate lines for easy scanning
+- Real icons from your theme (Material Icons, Seti, etc.)
+- Visual highlight on your active file
+
+### 🎯 Quick Actions on Hover
+- **Pin** important files to keep them at the top
+- **Close** tabs without hunting for tiny X buttons  
+- **Add to Copilot Chat** for AI assistance with your code
+- Everything appears when you hover — no clutter when you don't need it
+
+### 🔍 Powerful Right-Click Menu
+- Close other tabs to focus on what matters
+- Reveal files in the Explorer
+- Copy file paths for sharing
+- Compare files side-by-side
+- Move tabs between editor groups
+
+### 🎨 Smart File Actions
+- **Preview** Markdown, HTML, images, and CSV files
+- **Run** tests, Python scripts, and shell commands
+- **Open** external files (PDFs, videos, etc.) in their native apps
+- **Format** JSON, CSS, and YAML files
+- **Optimize** SVG files and compile SCSS/Less
+- **Send** HTTP requests from `.http` files
+
+### 👥 Multi-Window Support
+When you split your editor, Tabs Lover groups your tabs automatically. Each group gets its own header so you always know what's where.
 
 ## Requirements
 
 - VS Code **1.108.0** or later
 
-## Extension Settings
+## ⚙️ Customize It Your Way
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `tabsLover.showFilePath` | `boolean` | `true` | Show relative file path below file name |
-| `tabsLover.tabHeight` | `number` | `40` | Tab row height in pixels |
-| `tabsLover.iconSize` | `number` | `16` | File icon size in pixels |
-| `tabsLover.enableHoverActions` | `boolean` | `true` | Show action buttons on hover |
-| `tabsLover.showStateIcons` | `boolean` | `true` | Show state indicators (dirty, pinned) |
-| `tabsLover.enableDragDrop` | `boolean` | `false` | Experimental drag & drop reordering |
+Open VS Code Settings (`Ctrl+,` or `Cmd+,`) and search for "Tabs Lover":
 
-## Commands
+- **Show file paths** — See where each file lives in your project  
+  *Default: On*
 
-| Command | Description |
-|---------|-------------|
-| `Tabs Lover: Refresh` | Force refresh the tab list |
-| `Tabs Lover: Close All` | Close all open editors |
-| `Tabs Lover: Add Files to Copilot Chat…` | Multi-select files for Copilot context |
+- **Tab height** — Make tabs taller or more compact (24-60px)  
+  *Default: 40px*
 
-Additional commands available via context menu: Close, Close Others, Close to Right, Pin/Unpin, Reveal in Explorer, Copy Relative Path, Copy File Contents, Compare with Active Editor, Move to Group.
+- **Icon size** — Adjust file icon size to your preference  
+  *Default: 16px*
 
-## Architecture
+- **Hover actions** — Show/hide the pin, chat, and close buttons  
+  *Default: On*
 
-The extension uses a **WebviewView** (not TreeView) for full CSS control over the tab list:
+- **State indicators** — Show dots for unsaved changes and pin badges  
+  *Default: On*
 
-```
-VS Code Tab API → TabSyncService → TabStateService → TabsLoverWebviewProvider (HTML/CSS)
-                                                    ↗ TabIconManager (base64 icons)
-```
+- **Drag & drop** — Reorder tabs by dragging (experimental)  
+  *Default: Off*
 
-See [INSTRUCTIONS.md](INSTRUCTIONS.md) for the complete architecture guide.
+## 🎮 Quick Commands
 
-## Development
+Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type "Tabs Lover":
 
+- **Refresh** — Reload the tab list if something looks off
+- **Close All** — Clear all open editors at once
+- **Add Files to Copilot Chat…** — Pick multiple files to discuss with AI
+
+Most actions are just a right-click away in the tab list!
+
+## 🛠️ For Developers
+
+Want to contribute or customize Tabs Lover? Check out [INFO.md](INFO.md) for the complete architecture guide.
+
+**Quick start:**
 ```bash
 npm install
-npm run watch     # esbuild + tsc in parallel
-# Press F5 to launch Extension Development Host
-```
-
-```bash
-npm run compile   # Full build (type-check + lint + esbuild)
-npm test          # Run tests
+npm run watch    # Start development
+# Press F5 to test
 ```
 
 ## License
