@@ -271,7 +271,15 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
           
           // Pass context for dynamic action execution
           const context = { viewMode: tab.state.viewMode };
+          const shouldFocus = this.fileActionRegistry.shouldSetFocus(msg.actionId);
+          
+          // Execute the action
           await this.fileActionRegistry.execute(msg.actionId, tab.metadata.uri, context);
+          
+          // Set focus if requested (default behavior)
+          if (shouldFocus && !tab.state.isActive) {
+            await tab.activate();
+          }
         }
         break;
       }

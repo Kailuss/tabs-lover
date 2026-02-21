@@ -70,7 +70,6 @@ export type WebviewResourceUris = {
   webviewCss: vscode.Uri;
   webviewScript: vscode.Uri;
   dragDropScript: vscode.Uri | null;
-  setiFont: vscode.Uri;
 };
 
 //= ESTADO DE TAB

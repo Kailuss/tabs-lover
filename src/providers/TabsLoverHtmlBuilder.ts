@@ -65,7 +65,6 @@ export class TabsLoverHtmlBuilder {
       webviewCss: asUri(['dist', 'styles', 'webview.css']),
       webviewScript: asUri(['dist', 'webview', 'webview.js']),
       dragDropScript: enableDragDrop ? asUri(['dist', 'webview', 'dragdrop.js']) : null,
-      setiFont: asUri(['dist', 'fonts', 'seti.woff']),
     };
   }
 
@@ -81,7 +80,6 @@ export class TabsLoverHtmlBuilder {
     enableDragDrop: boolean,
   ): string {
     const csp = this.stylesBuilder.buildCSP(webview, nonce);
-    const inlineStyles = this.stylesBuilder.buildInlineStyles(uris.setiFont);
     const compactIcon = compactMode ? 'codicon-list-tree' : 'codicon-list-flat';
 
     const headerHtml = `<div class="view-header">
@@ -102,7 +100,6 @@ export class TabsLoverHtmlBuilder {
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <link href="${uris.codiconCss}" rel="stylesheet" />
 <link href="${uris.webviewCss}" rel="stylesheet" />
-<style>${inlineStyles}</style>
 </head>
 <body>
   ${headerHtml}
