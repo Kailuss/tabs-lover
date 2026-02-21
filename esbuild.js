@@ -84,18 +84,7 @@ function copyWebviewResources() {
 		copyDir(codiconsDir, distCodiconsDir);
 	}
 
-	// Copiar fuente Seti desde assets (para temas de iconos basados en fuentes)
-	const setiFontSrc = path.join(__dirname, 'assets', 'fonts', 'seti.woff');
-	if (fs.existsSync(setiFontSrc)) {
-		const distFontsDir = path.join(__dirname, 'dist', 'fonts');
-		if (!fs.existsSync(distFontsDir)) {
-			fs.mkdirSync(distFontsDir, { recursive: true });
-		}
-		fs.copyFileSync(setiFontSrc, path.join(distFontsDir, 'seti.woff'));
-		console.log('[build] Seti font copied from assets');
-	} else {
-		console.warn('[build] WARNING: Seti font not found at:', setiFontSrc);
-	}
+	// Note: seti.woff removed - VS Code provides file icons through its API
 
 	console.log('[build] Webview resources copied to dist/');
 }
