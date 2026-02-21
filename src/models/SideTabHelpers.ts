@@ -301,6 +301,16 @@ export class SideTabHelpers {
     const isBinary = metadata.isBinary || false;
     const isRemote = metadata.isRemote || false;
     
+    // Get permissions to check restrictions
+    const permissions = state.permissions || {
+      canRename: true,
+      canDelete: true,
+      canMove: true,
+      canShare: true,
+      canExport: true,
+      restrictedActions: [],
+    };
+    
     // Preview toggle: Markdown, SVG, HTML files
     const ext = metadata.fileExtension.toLowerCase();
     const supportsPreview = ['.md', '.svg', '.html', '.htm'].includes(ext);
@@ -311,11 +321,11 @@ export class SideTabHelpers {
       canPin: !state.isPinned && !isDiff, // Can't pin if already pinned or is a diff
       canUnpin: state.isPinned || false,
       canSplit: hasUri && !isDiff, // Can split if has URI and not a diff
-      canRename: isFile && !isReadOnly && !isRemote,
+      canRename: isFile && !isReadOnly && !isRemote && permissions.canRename,
 
       // NAVIGATION
       canRevealInExplorer: hasUri && metadata.scheme === 'file',
-      canCopyPath: hasUri,
+      canCopyPath: hasUri && permissions.canShare,
       canOpenInTerminal: hasUri && metadata.scheme === 'file' && !!metadata.dirPath,
 
       // COMPARISON
@@ -338,7 +348,7 @@ export class SideTabHelpers {
       canExpand: state.hasChildren || false,
 
       // ADVANCED
-      canDragDrop: !state.isPinned && !isDiff, // Pinned and diff tabs can't be dragged
+      canDragDrop: !state.isPinned && !isDiff && permissions.canMove, // Pinned and diff tabs can't be dragged
       canProtect: !state.isProtected || false,
       supportsGit: hasUri && metadata.scheme === 'file',
       supportsDiagnostics: isFile && hasUri,
@@ -356,8 +366,32 @@ export class SideTabHelpers {
       // VISUALIZATION MODE
       viewMode: 'source', // Default to source view
       
+      // ACTION CONTEXT (NEW)
+      actionContext: {
+        viewMode: 'source',
+        editMode: 'editable',
+        compareMode: false,
+        debugMode: false,
+      },
+      
+      // OPERATION STATE (NEW)
+      operationState: {
+        isProcessing: false,
+        canCancel: false,
+      },
+      
       // CAPABILITIES (will be computed separately)
       capabilities: SideTabHelpers.createEmptyCapabilities(),
+      
+      // PERMISSIONS (NEW)
+      permissions: {
+        canRename: true,
+        canDelete: true,
+        canMove: true,
+        canShare: true,
+        canExport: true,
+        restrictedActions: [],
+      },
       
       // HIERARCHY
       hasChildren: false,
@@ -382,6 +416,20 @@ export class SideTabHelpers {
       // PROTECTION
       isTransient: false,
       isProtected: false,
+      
+      // INTEGRATIONS (NEW)
+      integrations: {
+        copilot: {
+          inContext: false,
+        },
+        git: {
+          hasUncommittedChanges: false,
+        },
+      },
+      
+      // CUSTOMIZATION (NEW) - undefined by default
+      customActions: undefined,
+      shortcuts: undefined,
     };
   }
 

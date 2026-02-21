@@ -7,6 +7,81 @@ export type SideTabType = 'file' | 'diff' | 'webview' | 'custom' | 'notebook' | 
 export type GitStatus   = 'modified' | 'added' | 'deleted' | 'untracked' | 'ignored' | 'conflict' | null;
 //: View mode for tabs that support multiple visualizations
 export type TabViewMode = 'source' | 'preview' | 'split';
+//: Edit mode for tabs
+export type EditMode = 'readonly' | 'editable';
+
+/**
+ * Contexto de acción dinámico para tabs.
+ * Define el estado actual de visualización y edición.
+ */
+export type ActionContext = {
+  viewMode?: TabViewMode;                        // How the tab is visualized
+  editMode?: EditMode;                           // Edit capability state
+  splitOrientation?: 'horizontal' | 'vertical';  // Split view orientation
+  compareMode?: boolean;                         // In diff/compare mode
+  debugMode?: boolean;                           // In debug mode
+}
+
+/**
+ * Estado de operaciones asíncronas en progreso.
+ */
+export type OperationState = {
+  isProcessing: boolean;           // Operation in progress
+  currentOperation?: string;       // Operation name (close, save, etc)
+  canCancel: boolean;              // Can be cancelled
+  progress?: number;               // Progress 0-100 (if applicable)
+}
+
+/**
+ * Permisos granulares para operaciones de archivo.
+ * Más específico que capabilities - define qué está permitido.
+ */
+export type TabPermissions = {
+  canRename: boolean;              // Can rename file
+  canDelete: boolean;              // Can delete file
+  canMove: boolean;                // Can move to other location
+  canShare: boolean;               // Can share (copy link, etc)
+  canExport: boolean;              // Can export to other format
+  restrictedActions?: string[];    // IDs of blocked actions
+}
+
+/**
+ * Estado de integración con servicios externos.
+ */
+export type TabIntegrations = {
+  copilot?: {
+    inContext: boolean;            // In Copilot chat context
+    lastAddedTime?: number;        // When added to context
+  };
+  git?: {
+    hasUncommittedChanges: boolean;
+    branch?: string;               // Current branch
+    ahead?: number;                // Commits ahead of remote
+    behind?: number;               // Commits behind remote
+  };
+}
+
+/**
+ * Acción personalizada definida por usuario o extensión.
+ */
+export type CustomTabAction = {
+  id: string;
+  label: string;
+  icon: string;
+  tooltip: string;
+  keybinding?: string;
+  execute: (metadata: SideTabMetadata, state: SideTabState) => Promise<void>;
+}
+
+/**
+ * Atajos de teclado personalizados para acciones.
+ */
+export type TabShortcuts = {
+  quickPin?: string;               // Quick pin/unpin
+  quickClose?: string;             // Quick close
+  quickDuplicate?: string;         // Quick duplicate
+  quickReveal?: string;            // Quick reveal in explorer
+}
 
 /**
  * Immutable metadata describing a tab.
@@ -116,9 +191,13 @@ export type SideTabState = {
   //: VISUALIZATION MODE
   viewMode           : TabViewMode;  // How the tab is visualized: source | preview | split
 
-  //: CAPABILITIES
+  //: ACTION CONTEXT (NEW)
+  actionContext      : ActionContext;        // Dynamic action context
+  operationState     : OperationState;       // Async operations state
 
+  //: CAPABILITIES & PERMISSIONS
   capabilities       : SideTabCapabilities;  // What actions can be performed
+  permissions        : TabPermissions;       // Granular permissions
   //: HIERARCHY
   hasChildren        : boolean;   // Has child tabs (diffs, previews)
   isChild            : boolean;   // Is a child tab of another
@@ -142,6 +221,13 @@ export type SideTabState = {
   //: PROTECTION
   isTransient        : boolean;   // Closes automatically (like VS Code preview)
   isProtected        : boolean;   // Requires confirmation to close
+
+  //: INTEGRATIONS (NEW)
+  integrations       : TabIntegrations;      // External service states
+
+  //: CUSTOMIZATION (NEW)
+  customActions?     : CustomTabAction[];    // User-defined actions
+  shortcuts?         : TabShortcuts;         // Custom keybindings
 }
 
 /**
