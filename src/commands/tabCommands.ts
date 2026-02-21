@@ -39,6 +39,20 @@ export function registerTabCommands(
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     }),
 
+    vscode.commands.registerCommand('tabsLover.saveAll', async () => {
+      await vscode.workspace.saveAll(false);
+    }),
+
+    vscode.commands.registerCommand('tabsLover.reorder', () => {
+      vscode.window.showInformationMessage('Reorder: Coming soon');
+    }),
+
+    vscode.commands.registerCommand('tabsLover.toggleCompactMode', async () => {
+      const cfg = vscode.workspace.getConfiguration('tabsLover');
+      const current = cfg.get<boolean>('compactMode', false);
+      await cfg.update('compactMode', !current, vscode.ConfigurationTarget.Global);
+    }),
+
     vscode.commands.registerCommand('tabsLover.pinTab', async (arg: unknown) => {
       const tab = resolve(arg);
       if (tab) { await tab.pin(); }

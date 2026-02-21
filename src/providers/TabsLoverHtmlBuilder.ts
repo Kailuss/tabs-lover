@@ -34,57 +34,24 @@ export class TabsLoverHtmlBuilder {
 
   /**
    * Construye el HTML completo del webview.
-   * Soporta dos formas de llamada para compatibilidad:
-   * 
-   * Nueva (recomendada):
-   *   buildHtml(options: BuildHtmlOptions)
-   * 
-   * Legacy (deprecated):
-   *   buildHtml(webview, groups, tabHeight, showPath, copilotReady, enableDragDrop, getTabsInGroup)
    */
-  async buildHtml(
-    optionsOrWebview: BuildHtmlOptions | vscode.Webview,
-    groups?: SideTabGroup[],
-    tabHeight?: number,
-    showPath?: boolean,
-    copilotReady?: boolean,
-    enableDragDrop?: boolean,
-    getTabsInGroup?: (groupId: number) => SideTab[],
-  ): Promise<string> {
-    // Detectar si es llamada con objeto de opciones o parámetros individuales
-    let options: BuildHtmlOptions;
-
-    if ('webview' in optionsOrWebview && 'groups' in optionsOrWebview) {
-      // Nueva API con objeto de opciones
-      options = optionsOrWebview as BuildHtmlOptions;
-    } else {
-      // API legacy con parámetros individuales
-      options = {
-        webview: optionsOrWebview as vscode.Webview,
-        groups: groups!,
-        getTabsInGroup: getTabsInGroup!,
-        tabHeight: tabHeight!,
-        showPath: showPath!,
-        copilotReady: copilotReady!,
-        enableDragDrop,
-      };
-    }
-
+  async buildHtml(options: BuildHtmlOptions): Promise<string> {
     const {
       webview,
       groups: grps,
       getTabsInGroup: getTabs,
-      tabHeight: height,
       showPath: path,
       copilotReady: copilot,
       enableDragDrop: dragDrop = false,
+      compactMode,
+      workspaceName,
     } = options;
 
     const uris = this.resolveResourceUris(webview, dragDrop);
     const nonce = this.generateNonce();
-    const tabsHtml = await this.renderAllTabs(grps, getTabs, height, path, copilot, dragDrop);
+    const tabsHtml = await this.renderAllTabs(grps, getTabs, path, copilot, dragDrop, compactMode);
 
-    return this.assembleHtml(webview, uris, nonce, height, tabsHtml, dragDrop);
+    return this.assembleHtml(webview, uris, nonce, workspaceName, compactMode, tabsHtml, dragDrop);
   }
 
   //= RESOLUCIÓN DE RECURSOS
@@ -108,12 +75,24 @@ export class TabsLoverHtmlBuilder {
     webview: vscode.Webview,
     uris: WebviewResourceUris,
     nonce: string,
-    tabHeight: number,
+    workspaceName: string,
+    compactMode: boolean,
     tabsHtml: string,
     enableDragDrop: boolean,
   ): string {
     const csp = this.stylesBuilder.buildCSP(webview, nonce);
-    const inlineStyles = this.stylesBuilder.buildInlineStyles(uris.setiFont, tabHeight);
+    const inlineStyles = this.stylesBuilder.buildInlineStyles(uris.setiFont);
+    const compactIcon = compactMode ? 'codicon-list-tree' : 'codicon-list-flat';
+
+    const headerHtml = `<div class="view-header">
+  <span class="view-header-title">${this.esc(workspaceName)}</span>
+  <span class="view-header-actions">
+    <button class="view-header-btn" data-action="refresh" title="Refresh"><span class="codicon codicon-refresh"></span></button>
+    <button class="view-header-btn" data-action="reorder" title="Reorder Tabs"><span class="codicon codicon-list-ordered"></span></button>
+    <button class="view-header-btn" data-action="toggleCompactMode" title="Toggle Compact Mode"><span class="codicon ${compactIcon}"></span></button>
+    <button class="view-header-btn" data-action="saveAll" title="Save All"><span class="codicon codicon-save-all"></span></button>
+  </span>
+</div>`;
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -126,6 +105,7 @@ export class TabsLoverHtmlBuilder {
 <style>${inlineStyles}</style>
 </head>
 <body>
+  ${headerHtml}
   ${tabsHtml || '<div class="empty">No open tabs</div>'}
   <script nonce="${nonce}" src="${uris.webviewScript}"></script>
   ${uris.dragDropScript ? `<script nonce="${nonce}" src="${uris.dragDropScript}"></script>` : ''}
@@ -138,15 +118,15 @@ export class TabsLoverHtmlBuilder {
   private async renderAllTabs(
     groups: SideTabGroup[],
     getTabsInGroup: (groupId: number) => SideTab[],
-    tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
     enableDragDrop: boolean,
+    compactMode: boolean,
   ): Promise<string> {
     if (groups.length <= 1) {
       const groupId = groups[0]?.id;
       if (groupId !== undefined) {
-        return this.renderTabList(getTabsInGroup(groupId), tabHeight, showPath, copilotReady, enableDragDrop);
+        return this.renderTabList(getTabsInGroup(groupId), showPath, copilotReady, enableDragDrop, compactMode);
       }
       return '';
     }
@@ -154,44 +134,48 @@ export class TabsLoverHtmlBuilder {
     let html = '';
     for (const group of groups) {
       html += this.renderGroupHeader(group);
-      html += await this.renderTabList(getTabsInGroup(group.id), tabHeight, showPath, copilotReady, enableDragDrop);
+      html += await this.renderTabList(getTabsInGroup(group.id), showPath, copilotReady, enableDragDrop, compactMode);
     }
     return html;
   }
 
   private renderGroupHeader(group: SideTabGroup): string {
-    const marker = group.isActive ? ' (Active)' : '';
-    return `<div class="group-header">
-      <span class="codicon codicon-window"></span>
-      <span>${this.esc(group.label)}${marker}</span>
+    const marker = group.isActive ? ' ●' : '';
+    return `<div class="group-header" data-groupid="${group.id}">
+      <span class="codicon codicon-files group-icon"></span>
+      <span class="group-label">${this.esc(group.label)}${marker}</span>
+      <span class="group-actions">
+        <button class="group-btn" data-action="closeGroup" data-groupid="${group.id}" title="Close Group"><span class="codicon codicon-close-all"></span></button>
+        <button class="group-btn" data-action="toggleGroup" data-groupid="${group.id}" title="Collapse/Expand"><span class="codicon codicon-fold-down"></span></button>
+      </span>
     </div>`;
   }
 
   private async renderTabList(
     tabs: SideTab[],
-    tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
     enableDragDrop: boolean,
+    compactMode: boolean,
   ): Promise<string> {
     const sorted = [...tabs].sort((a, b) => {
-      if (a.state.isPinned && !b.state.isPinned) return -1;
-      if (!a.state.isPinned && b.state.isPinned) return 1;
+      if (a.state.isPinned && !b.state.isPinned) { return -1; }
+      if (!a.state.isPinned && b.state.isPinned) { return 1; }
       return 0;
     });
 
     const rendered = await Promise.all(
-      sorted.map(t => this.renderTab(t, tabHeight, showPath, copilotReady, enableDragDrop))
+      sorted.map(t => this.renderTab(t, showPath, copilotReady, enableDragDrop, compactMode))
     );
     return rendered.join('');
   }
 
   private async renderTab(
     tab: SideTab,
-    _tabHeight: number,
     showPath: boolean,
     copilotReady: boolean,
     _enableDragDrop: boolean,
+    compactMode: boolean,
   ): Promise<string> {
     const activeClass = tab.state.isActive ? ' active' : '';
     const dataPinned = `data-pinned="${tab.state.isPinned}"`;
@@ -210,11 +194,29 @@ export class TabsLoverHtmlBuilder {
 
     const closeBtn = `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`;
 
+    const iconHtml = await this.iconRenderer.render(tab);
+
+    // Compact mode: same layout as normal, single-line text (name + inline path)
+    if (compactMode) {
+      const pathSuffix = showPath && tab.metadata.description
+        ? `<span class="tab-path-inline">${this.esc(tab.metadata.description)}</span>`
+        : '';
+      return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
+      <span class="tab-icon">${iconHtml}</span>
+      <div class="tab-text">
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${pathSuffix}</div>
+      </div>
+      ${stateIndicator.html}
+      <span class="tab-actions">
+        ${fileActionBtn}${chatBtn}${closeBtn}
+      </span>
+    </div>`;
+    }
+
+    // Normal mode: two-line layout
     const pathHtml = showPath && tab.metadata.description
       ? `<div class="tab-path">${this.esc(tab.metadata.description)}</div>`
       : '';
-
-    const iconHtml = await this.iconRenderer.render(tab);
 
     return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
       <span class="tab-icon">${iconHtml}</span>
@@ -232,10 +234,10 @@ export class TabsLoverHtmlBuilder {
   //= BOTONES DE ACCIÓN
 
   private renderFileActionButton(tab: SideTab): string {
-    if (!this.fileActionRegistry || !tab.metadata.uri) return '';
+    if (!this.fileActionRegistry || !tab.metadata.uri) { return ''; }
 
     const resolved = this.fileActionRegistry.resolve(tab.metadata.label, tab.metadata.uri);
-    if (!resolved) return '';
+    if (!resolved) { return ''; }
 
     return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;
   }

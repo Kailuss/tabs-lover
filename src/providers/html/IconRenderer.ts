@@ -9,8 +9,8 @@ import { SideTab } from '../../models/SideTab';
 import { resolveBuiltInCodicon } from '../../utils/builtinIcons';
 import {
   IconData,
-  VSCODE_FILE_EXTENSIONS,
-  VSCODE_FILE_PATTERNS,
+  // VSCODE_FILE_EXTENSIONS,  // Comentado: ya no se usan iconos especiales de VS Code
+  // VSCODE_FILE_PATTERNS,    // Comentado: ya no se usan iconos especiales de VS Code
 } from './types';
 
 export class IconRenderer {
@@ -25,9 +25,9 @@ export class IconRenderer {
   async render(tab: SideTab): Promise<string> {
     const { tabType, viewType, label, uri, fileType } = tab.metadata;
 
-    // Webviews y tabs desconocidas usan codicons
+    // Webviews y tabs desconocidas usan codicons con color estándar
     if (tabType === 'webview' || tabType === 'unknown') {
-      return this.renderCodicon(resolveBuiltInCodicon(label, viewType));
+      return this.renderCodicon(resolveBuiltInCodicon(label, viewType), '#d4d7d6');
     }
 
     const fileName = this.resolveFileName(tab);
@@ -35,10 +35,10 @@ export class IconRenderer {
       return this.renderFallback(fileType);
     }
 
-    // Archivos de VS Code tienen icono especial
-    if (this.isVSCodeFile(fileName)) {
-      return this.renderCodicon('vscode', '#2196f3');
-    }
+    // Archivos de VS Code: comentado, ahora usan iconos del tema activo
+    // if (this.isVSCodeFile(fileName)) {
+    //   return this.renderCodicon('vscode', '#2196f3');
+    // }
 
     // Intentar resolver icono del tema
     const iconData = await this.resolveIconData(fileName);
@@ -64,7 +64,9 @@ export class IconRenderer {
 
   /**
    * Verifica si el archivo es relacionado con VS Code.
+   * Comentado: ahora todos los archivos usan iconos del tema activo
    */
+  /*
   private isVSCodeFile(fileName: string): boolean {
     const lower = fileName.toLowerCase();
 
@@ -84,6 +86,7 @@ export class IconRenderer {
 
     return false;
   }
+  */
 
   /**
    * Resuelve los datos del icono desde el IconManager.
@@ -155,9 +158,10 @@ export class IconRenderer {
 
   /**
    * Renderiza un codicon de VS Code.
+   * Por defecto usa el color #d4d7d6 (gris claro).
    */
-  private renderCodicon(name: string, color?: string): string {
-    const style = color ? ` style="color: ${color};"` : '';
+  private renderCodicon(name: string, color: string = '#d4d7d6'): string {
+    const style = ` style="color: ${color};"`;
     return `<span class="codicon codicon-${name}"${style}></span>`;
   }
 

@@ -115,6 +115,8 @@ const esbuildProblemMatcherPlugin = {
 				console.error(`✘ [ERROR] ${text}`);
 				console.error(`    ${location.file}:${location.line}:${location.column}:`);
 			});
+			// Re-bundle CSS and copy webview assets on every rebuild
+			copyWebviewResources();
 			console.log('[watch] build finished');
 		});
 	},

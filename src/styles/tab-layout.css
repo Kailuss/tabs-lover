@@ -12,3 +12,15 @@
   color         : var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
   transition    : transform 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease;
 }
+
+/* ===== Compact mode — same layout, reduced height ===== */
+.tab.compact {
+  height : 26px;
+}
+
+/* Inline path in compact mode (inside .tab-name) */
+.tab-path-inline {
+  opacity    : 0.55;
+  font-size  : 0.9em;
+  margin-left: 4px;
+}

@@ -21,6 +21,7 @@
 }
 
 @import './base.css';
+@import './view-header.css';
 @import './group-header.css';
 @import './tab-layout.css';
 @import './tab-states.css';

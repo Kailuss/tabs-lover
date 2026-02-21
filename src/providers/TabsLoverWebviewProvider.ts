@@ -40,6 +40,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     stateService.onDidChangeStateSilent(() => this.refreshSilent());
     // Notify tab state changes for animation
     stateService.onDidChangeTabState((tabId) => this.notifyTabStateChanged(tabId));
+    // Rebuild when workspace folders change (updates header title)
+    vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh());
   }
 
   //= WEBVIEW LIFECYCLE
@@ -61,6 +63,9 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     };
 
     webviewView.webview.onDidReceiveMessage(msg => this.handleMessage(msg));
+
+    // Set initial panel title to the workspace name
+    webviewView.title = this.getWorkspaceName();
 
     this.refresh();
   }
@@ -85,15 +90,19 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       
       console.log('[TabsLover] Building HTML, groups:', groups.length);
 
-      this._view.webview.html = await this.htmlBuilder.buildHtml(
-        this._view.webview,
+      this._view.webview.html = await this.htmlBuilder.buildHtml({
+        webview        : this._view.webview,
         groups,
-        config.tabHeight,
-        config.showFilePath,
+        getTabsInGroup : (groupId) => this.stateService.getTabsInGroup(groupId),
+        workspaceName  : this.getWorkspaceName(),
+        compactMode    : config.compactMode,
+        showPath       : config.showFilePath,
         copilotReady,
-        config.enableDragDrop,
-        (groupId) => this.stateService.getTabsInGroup(groupId),
-      );
+        enableDragDrop : config.enableDragDrop,
+      });
+
+      // Also update the native VS Code panel title
+      this._view.title = this.getWorkspaceName();
       
       console.log('[TabsLover] HTML assigned to webview');
     }, 30);
@@ -200,10 +209,61 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         }
         break;
       }
+      case 'saveAll': {
+        await vscode.workspace.saveAll(false);
+        break;
+      }
+      case 'reorder': {
+        vscode.window.showInformationMessage('Reorder: Coming soon');
+        break;
+      }
+      case 'closeGroup': {
+        const group = vscode.window.tabGroups.all.find(g => g.viewColumn === msg.groupId);
+        if (group) {
+          await vscode.window.tabGroups.close(group);
+        }
+        break;
+      }
+      case 'toggleCompactMode': {
+        const cfg = vscode.workspace.getConfiguration('tabsLover');
+        const current = cfg.get<boolean>('compactMode', false);
+        await cfg.update('compactMode', !current, vscode.ConfigurationTarget.Global);
+        break;
+      }
+      case 'refresh': {
+        this.refresh();
+        break;
+      }
     }
   }
 
   private findTab(id: string): SideTab | undefined {
     return this.stateService.getTab(id);
+  }
+
+  //= HELPERS
+
+  /**
+   * Devuelve el nombre del workspace activo.
+   * Usa el nombre del archivo .code-workspace si está disponible,
+   * o el nombre de la primera carpeta, o 'No Folder'.
+   */
+  private getWorkspaceName(): string {
+    const wsFile = vscode.workspace.workspaceFile;
+    if (wsFile) {
+      const base = wsFile.path.split('/').pop() ?? '';
+      return base.replace(/\.code-workspace$/i, '') || 'Workspace';
+    }
+    return vscode.workspace.workspaceFolders?.[0]?.name ?? 'No Folder';
+  }
+
+  /**
+   * Actualiza el título del panel (visible en la barra del webview).
+   * Útil para mostrar estados de carga o el nombre del workspace.
+   */
+  public sendHeaderMessage(text: string): void {
+    if (this._view) {
+      this._view.title = text;
+    }
   }
 }

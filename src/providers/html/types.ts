@@ -8,12 +8,16 @@ import { SideTabGroup } from '../../models/SideTabGroup';
 
 //= OPCIONES DE RENDERIZADO
 
+/** Icono de archivo genérico de fallback (Seti \E023 en gris) */
+export const FALLBACK_FILE_ICON = 'font-icon:\\E023:#d4d7d6';
+
 /** Opciones para construir el HTML del webview */
 export type BuildHtmlOptions = {
   webview: vscode.Webview;
   groups: SideTabGroup[];
   getTabsInGroup: (groupId: number) => SideTab[];
-  tabHeight: number;
+  workspaceName: string;
+  compactMode: boolean;
   showPath: boolean;
   copilotReady: boolean;
   enableDragDrop?: boolean;
@@ -76,20 +80,6 @@ export type StateIndicator = {
   html: string;
   nameClass: string;
 };
-
-//= ARCHIVOS ESPECIALES
-
-/** Extensiones de archivo que usan icono especial de VS Code */
-export const VSCODE_FILE_EXTENSIONS = [
-  '.vsix',
-  '.vscodeignore', 
-  '.vsixmanifest',
-] as const;
-
-/** Patrones de nombre que usan icono de VS Code */
-export const VSCODE_FILE_PATTERNS = [
-  'vsix',
-] as const;
 
 //= CONFIGURACIÓN DE ESTILOS
 

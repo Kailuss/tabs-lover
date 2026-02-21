@@ -2,8 +2,8 @@
 // Served as a static resource via webview.asWebviewUri().
 // Only loaded when drag & drop is enabled in settings.
 
-const TAB_H          = 43;  // Altura de cada tab incluyendo border (px)
 const DRAG_THRESHOLD = 5;   // Pixels antes de iniciar el drag
+let TAB_H            = 43;  // Altura dinámica (se actualiza según modo compacto)
 
 let isDragging         = false;
 let startY             = 0;
@@ -64,20 +64,27 @@ function beginDrag() {
   isDragging = true;
   document.body.classList.add('drag-active');
 
+  // Detectar altura real de la tab (compacto: 26px, normal: 42px) + 1px de border
+  const rect = sourceEl.getBoundingClientRect();
+  TAB_H = Math.round(rect.height) + 1;
+
   const allTabs  = Array.from(document.querySelectorAll('.tab[data-groupid="' + tabGroupId + '"]'));
   const unpinned = allTabs.filter(t => t.dataset.pinned !== 'true');
   sourceIndex        = unpinned.indexOf(sourceEl);
   currentInsertIndex = sourceIndex;
   siblings           = unpinned.filter(t => t !== sourceEl);
 
-  // Guardar posiciones originales (sus rect.top)
-  originalOrder = siblings.map(t => ({
-    el: t,
-    origTop: t.getBoundingClientRect().top,
-  }));
+  // Guardar posiciones originales (sus rect.top) y sus alturas
+  originalOrder = siblings.map(t => {
+    const siblingRect = t.getBoundingClientRect();
+    return {
+      el: t,
+      origTop: siblingRect.top,
+      height: Math.round(siblingRect.height) + 1, // altura real + border
+    };
+  });
 
   // Crear clon flotante
-  const rect  = sourceEl.getBoundingClientRect();
   cloneEl     = sourceEl.cloneNode(true);
   cloneEl.classList.add('drag-clone');
   cloneEl.style.top    = rect.top    + 'px';
@@ -94,7 +101,7 @@ function updateSiblingPositions(cloneCenter) {
   let newIndex = siblings.length; // por defecto al final
 
   for (let i = 0; i < originalOrder.length; i++) {
-    if (cloneCenter < originalOrder[i].origTop + (TAB_H / 2)) {
+    if (cloneCenter < originalOrder[i].origTop + (originalOrder[i].height / 2)) {
       newIndex = i;
       break;
     }
@@ -108,8 +115,8 @@ function updateSiblingPositions(cloneCenter) {
     const origLogical = (i < sourceIndex) ? i : i + 1;
     let   shift       = 0;
 
-    if      (origLogical < sourceIndex && i >= currentInsertIndex) { shift =  TAB_H; }
-    else if (origLogical > sourceIndex && i <  currentInsertIndex) { shift = -TAB_H; }
+    if      (origLogical < sourceIndex && i >= currentInsertIndex) { shift =  s.height -1; }
+    else if (origLogical > sourceIndex && i <  currentInsertIndex) { shift = -s.height +1; }
 
     s.el.style.transform = shift ? ('translateY(' + shift + 'px)') : '';
   }

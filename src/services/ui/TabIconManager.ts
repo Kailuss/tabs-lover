@@ -174,6 +174,15 @@ export class TabIconManager {
         });
       }
 
+      // Log de archivos especiales mapeados para debugging
+      const specialFiles = ['.vscodeignore', '.gitignore', '.npmignore', '.dockerignore'];
+      specialFiles.forEach(file => {
+        const key = `name:${file}`;
+        if (iconMap[key]) {
+          console.log(`[TabsLover] Special file mapped: ${file} → ${iconMap[key]}`);
+        }
+      });
+
       this._iconMap = iconMap;
     } catch (error) {
       console.error('[TabsLover] Error building icon map:', error);
@@ -231,22 +240,6 @@ export class TabIconManager {
         : '';
 
       const cacheKey = `${fileNameLower}|${languageId || ''}`;
-      
-      // Debug: log first few icon lookups
-      const debugIconLookup = !this._iconCache.has(cacheKey) && this._iconCache.size < 3;
-      if (debugIconLookup) {
-        const nameKey = `name:${fileNameLower}`;
-        const extKey = `ext:${extName}`;
-        console.log('[TabsLover] Icon lookup:', { 
-          fileName, 
-          ext: extName, 
-          nameKey,
-          extKey,
-          hasNameMatch: !!this._iconMap![nameKey],
-          hasExtMatch: !!this._iconMap![extKey],
-          sampleKeys: Object.keys(this._iconMap!).slice(0, 20)
-        });
-      }
 
       // Check path cache
       let iconPath = this._iconPathCache.get(cacheKey);
@@ -263,6 +256,15 @@ export class TabIconManager {
           iconId = this._iconMap[`ext:${extName}`];
         } else if (languageId && this._iconMap[`lang:${languageId.toLowerCase()}`]) {
           iconId = this._iconMap[`lang:${languageId.toLowerCase()}`];
+        }
+        
+        // Archivos especiales: *ignore (gitignore, npmignore, dockerignore, vscodeignore)
+        if (!iconId && fileNameLower.endsWith('ignore')) {
+          // Buscar patrón genérico "ignore" en diferentes formas
+          const gitignoreId = this._iconMap['name:.gitignore'];
+          const ignoreExtId = this._iconMap['ext:ignore'];
+          const ignoreLangId = this._iconMap['lang:ignore'];
+          iconId = gitignoreId || ignoreLangId || ignoreExtId;
         }
 
         // Try inferring language from extension
@@ -303,27 +305,28 @@ export class TabIconManager {
             );
             if (fileIconKey) {
               iconId = fileIconKey;
+            } else {
+              // Fallback final: icono de archivo genérico (font-based)
+              const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+              this._iconCache.set(cacheKey, fallbackIcon);
+              return fallbackIcon;
             }
           }
         }
 
-        if (debugIconLookup) {
-          console.log('[TabsLover] Icon resolution:', { fileName, iconId, hasIconDef: !!themeJson.iconDefinitions?.[iconId!] });
-        }
-
         if (!iconId || !themeJson.iconDefinitions) {
-          if (debugIconLookup) {
-            console.warn('[TabsLover] Icon lookup failed: no iconId or no iconDefinitions', { iconId, hasDefinitions: !!themeJson.iconDefinitions });
-          }
-          return undefined;
+          // Fallback final si no hay iconId o definiciones
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
         const iconDef = themeJson.iconDefinitions[iconId];
         if (!iconDef) {
-          if (debugIconLookup) {
-            console.warn('[TabsLover] Icon lookup failed: iconDef not found for', iconId);
-          }
-          return undefined;
+          // Fallback final si no se encuentra la definición del icono
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
         // Check for SVG-based theme (iconPath) or font-based theme (fontCharacter)
@@ -332,28 +335,19 @@ export class TabIconManager {
         if (!iconPath && iconDef.fontCharacter) {
           // Font-based theme (like vs-seti): return special marker to use font rendering
           // The webview will handle this with CSS @font-face
-          if (debugIconLookup) {
-            console.log('[TabsLover] Font-based icon:', { iconId, char: iconDef.fontCharacter, color: iconDef.fontColor });
-          }
-          
-          // Return a special data structure that the HtmlBuilder will recognize
           const fontIconData = `font-icon:${iconDef.fontCharacter}:${iconDef.fontColor || '#cccccc'}`;
           this._iconCache.set(cacheKey, fontIconData);
           return fontIconData;
         }
         
         if (!iconPath) {
-          if (debugIconLookup) {
-            console.warn('[TabsLover] Icon lookup failed: no iconPath or fontCharacter in iconDef', iconDef);
-          }
-          return undefined;
+          // iconDef exists but has neither fontCharacter nor iconPath — use generic file icon
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
         this._iconPathCache.set(cacheKey, iconPath);
-        
-        if (debugIconLookup) {
-          console.log('[TabsLover] Icon path resolved:', { iconPath });
-        }
       }
 
       const iconThemeDir = path.dirname(this._iconThemePath!);
@@ -364,10 +358,6 @@ export class TabIconManager {
       }
 
       const absIconPath = path.resolve(iconThemeDir, normalizedIconPath);
-      
-      if (debugIconLookup) {
-        console.log('[TabsLover] Checking icon file:', { absIconPath, themePath: this._iconThemePath });
-      }
 
       try {
         await fsp.access(absIconPath);
@@ -377,23 +367,14 @@ export class TabIconManager {
           await fsp.access(altPath);
           const result = await this.readIconAndConvertToBase64(altPath);
           if (result) { this._iconCache.set(cacheKey, result); }
-          if (debugIconLookup) {
-            console.log('[TabsLover] Icon success (altPath):', { fileName, resultLength: result?.length });
-          }
           return result;
         } catch {
-          if (debugIconLookup) {
-            console.warn('[TabsLover] Icon file not found:', { absIconPath, altPath });
-          }
           return undefined;
         }
       }
 
       const result = await this.readIconAndConvertToBase64(absIconPath, fileName);
       if (result) { this._iconCache.set(cacheKey, result); }
-      if (debugIconLookup) {
-        console.log('[TabsLover] Icon success:', { fileName, resultLength: result?.length });
-      }
       return result;
     } catch (e) {
       console.error(`[TabsLover] Error getting icon for ${fileName}:`, e);
