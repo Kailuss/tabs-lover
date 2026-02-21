@@ -82,7 +82,7 @@ Most actions are just a right-click away in the tab list!
 
 ## 🛠️ For Developers
 
-Want to contribute or customize Tabs Lover? Check out [INFO.md](INFO.md) for the complete architecture guide.
+Want to contribute or customize Tabs Lover? See the documentation index in [docs/INDEX.md](docs/INDEX.md) (secciones didácticas en español).
 
 **Quick start:**
 ```bash
