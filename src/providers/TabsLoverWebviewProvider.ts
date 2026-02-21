@@ -161,8 +161,10 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         // (crítico para preview tabs que pueden haber cambiado)
         if (this.syncService?.syncActiveState) {
           this.syncService.syncActiveState();
-          // Esperar un momento para que la sincronización se propague completamente
-          await new Promise(resolve => setTimeout(resolve, 5));
+          // Pequeño retardo para dar tiempo a que VS Code propague el estado de pestañas sincronizado.
+          // 5 ms se ha elegido como valor mínimo que evita condiciones de carrera observadas sin impactar el rendimiento.
+          const SYNC_PROPAGATION_DELAY_MS = 5;
+          await new Promise(resolve => setTimeout(resolve, SYNC_PROPAGATION_DELAY_MS));
         }
         
         const tab = this.findTab(msg.tabId);

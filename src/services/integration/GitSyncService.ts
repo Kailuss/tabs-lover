@@ -212,11 +212,6 @@ export class GitSyncService {
   }
 
   private mapGitApiStatus(status: number | undefined): GitStatus {
-    const result = this.mapGitApiStatusInternal(status);
-    return result;
-  }
-
-  private mapGitApiStatusInternal(status: number | undefined): GitStatus {
     switch (status) {
       case 7: return 'untracked';
       case 1:

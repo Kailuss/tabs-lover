@@ -7,6 +7,7 @@ import { SideTabHelpers } from '../SideTabHelpers';
  */
 
 const MARKDOWN_EXTENSIONS = ['.md', '.mdx', '.markdown'];
+const ACTIVATION_RETRY_DELAY_MS = 50;
 
 export async function activate(metadata: SideTabMetadata, state: SideTabState): Promise<void> {
   return activateWithRetry(metadata, state, 0);
@@ -112,7 +113,7 @@ async function activateWithRetry(
         metadata.label,
         err
       );
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, ACTIVATION_RETRY_DELAY_MS));
       return activateWithRetry(metadata, state, attempt + 1);
     }
 

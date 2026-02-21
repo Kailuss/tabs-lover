@@ -50,8 +50,12 @@ function bundleCss(mainCssPath, outputPath) {
 		bundledCss = mainContent;
 	}
 	
-	// Replace ROOT_PATH placeholder - it will be replaced at runtime in the webview
-	// For now, use relative path from styles to fonts
+	// Replace the #{ROOT_PATH}# placeholder used in source CSS files.
+	// In CSS, #{ROOT_PATH}# represents the root folder for webview assets (e.g. fonts, icons),
+	// and is typically used in URLs like url("#{ROOT_PATH}#/fonts/...") so the same CSS works
+	// regardless of where the compiled file is emitted. At build time our bundled CSS is
+	// written to dist/styles/, while shared assets live one level up (e.g. dist/fonts or
+	// dist/codicons), so we replace #{ROOT_PATH}# with '..' to generate correct relative URLs.
 	bundledCss = bundledCss.replace(/#{ROOT_PATH}#/g, '..');
 	
 	fs.mkdirSync(path.dirname(outputPath), { recursive: true });

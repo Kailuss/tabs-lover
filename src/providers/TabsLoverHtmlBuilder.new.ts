@@ -1,11 +1,3 @@
-/**
- * ARCHIVO OBSOLETO - NO USAR
- * 
- * Este archivo es un backup antiguo con código legacy.
- * El archivo correcto es TabsLoverHtmlBuilder.ts (sin .new)
- * 
- * Puede ser eliminado de forma segura.
- */
+// Intentionally left blank; legacy backup implementation removed.
 
-// Export vacío para evitar errores de compilación
 export {};

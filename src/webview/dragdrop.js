@@ -49,7 +49,7 @@ document.addEventListener('mousemove', e => {
   
   // Move children clones with parent
   sourceChildren.forEach((child, i) => {
-    const childClone = document.querySelector('.drag-clone-child-' + i);
+    const childClone = document.querySelector('.drag-clone[data-child-index="' + i + '"]');
     if (childClone) {
       childClone.style.transform = 'translateY(' + dy + 'px)';
     }
@@ -132,7 +132,8 @@ function beginDrag() {
   sourceChildren.forEach((child, i) => {
     const childRect = child.getBoundingClientRect();
     const childClone = child.cloneNode(true);
-    childClone.classList.add('drag-clone', 'drag-clone-child-' + i);
+    childClone.classList.add('drag-clone');
+    childClone.dataset.childIndex = i;
     childClone.style.top    = childTop + 'px';
     childClone.style.left   = childRect.left + 'px';
     childClone.style.width  = childRect.width + 'px';

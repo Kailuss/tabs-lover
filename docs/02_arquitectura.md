@@ -43,9 +43,7 @@ A continuación se recogen algunos problemas frecuentes y cómo resolverlos:
 | Iconos faltantes | Tema de iconos no cargado | Revisa los logs de `TabIconManager.buildIconMap()` |
 | La extensión tarda 20 s en activarse | I/O de sincronización en icon manager | Asegúrate de usar `fs/promises` (sin sincronía) |
 | Mensajes en español antiguos | dist/extension.js desactualizado | Mata las tareas watch, `npm run compile` y relanza |
-| La extensión no se activa | Evento de activación incorrecto | Comprueba ````
-VS Code Tab API → TabSyncService → TabStateService → WebviewViewProvider
-```
+| La extensión no se activa | Evento de activación incorrecto | Comprueba que los `activationEvents` de `package.json` están bien configurados y que el flujo esperado es `VS Code Tab API → TabSyncService → TabStateService → WebviewViewProvider` |
 
 ### Modelos principales
 ```typescript
