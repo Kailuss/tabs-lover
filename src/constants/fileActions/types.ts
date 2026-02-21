@@ -1,4 +1,13 @@
 import * as vscode from 'vscode';
+import type { TabViewMode } from '../../models/SideTab';
+
+/**
+ * Contexto adicional para resolver acciones dinámicamente.
+ * Usado para acciones que dependen del estado de la tab (ej: toggle preview).
+ */
+export type FileActionContext = {
+  viewMode?: TabViewMode;  // Current view mode: 'source' | 'preview' | 'split'
+}
 
 /**
  * Descripción de una acción contextual asociada a un tipo de archivo.
@@ -23,6 +32,27 @@ export type FileAction = {
    * Recibe la URI del archivo afectado.
    */
   execute: (uri: vscode.Uri) => Promise<void>;
+}
+
+/**
+ * Acción con resolución dinámica basada en contexto de la tab.
+ * Usado para acciones toggle como Markdown preview/source.
+ */
+export type DynamicFileAction = {
+  id: string;
+  /**
+   * Función que decide si esta acción aplica a un archivo dado.
+   */
+  match: (fileName: string, uri: vscode.Uri) => boolean;
+  /**
+   * Resuelve el icono y tooltip dinámicamente según el contexto.
+   * Si no se proporciona contexto, devuelve los valores por defecto.
+   */
+  resolve: (context?: FileActionContext) => { icon: string; tooltip: string; actionId: string };
+  /**
+   * Ejecuta la acción con contexto opcional.
+   */
+  execute: (uri: vscode.Uri, context?: FileActionContext) => Promise<void>;
 }
 
 /**

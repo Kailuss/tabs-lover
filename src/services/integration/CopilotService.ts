@@ -96,8 +96,8 @@ export class CopilotService {
     const selected = await vscode.window.showQuickPick(
       fileTabs.map(tab => ({
         label: tab.metadata.label,
-        description: tab.metadata.description,
-        detail: tab.metadata.tooltip,
+        description: tab.metadata.detailLabel,
+        detail: tab.metadata.tooltipText,
         tab,
       })),
       {

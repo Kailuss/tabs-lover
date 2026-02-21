@@ -15,7 +15,7 @@ document.addEventListener('click', e => {
 
     if (action === 'closeTab') {
       const tabId = btn.dataset.tabid;
-      const tab   = document.querySelector(`.tab[data-tabid="${tabId}"]`);
+      const tab   = document.querySelector(`.tab[data-tabid="${CSS.escape(tabId)}"]`);
       if (tab && !closingTabs.has(tabId)) {
         closingTabs.add(tabId);
         tab.classList.add('closing');
@@ -94,7 +94,8 @@ window.addEventListener('message', e => {
   }
 
   if (msg.type === 'tabStateChanged') {
-    const tab = document.querySelector(`.tab[data-tabid="${msg.tabId}"]`);
+    // Use attribute selector with proper escaping for special characters in IDs
+    const tab = document.querySelector(`.tab[data-tabid="${CSS.escape(msg.tabId)}"]`);
     if (tab && !tab.classList.contains('closing')) {
       const tabName = tab.querySelector('.tab-name');
       const tabState = tab.querySelector('.tab-state');

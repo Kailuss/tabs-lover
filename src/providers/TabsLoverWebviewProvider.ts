@@ -5,6 +5,7 @@ import { CopilotService }           from '../services/integration/CopilotService
 import { TabDragDropService }       from '../services/ui/TabDragDropService';
 import { FileActionRegistry }      from '../services/registry/FileActionRegistry';
 import { SideTab }                  from '../models/SideTab';
+import type { TabViewMode }         from '../models/SideTab';
 import { getConfiguration }         from '../constants/styles';
 import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
 import { TabContextMenu }           from './TabContextMenu';
@@ -26,6 +27,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionUri  : vscode.Uri,
     private readonly stateService   : TabStateService,
+    private readonly syncService    : any, // TabSyncService (any para evitar import cíclico)
     private readonly copilotService : CopilotService,
     private readonly iconManager    : TabIconManager,
     private readonly context        : vscode.ExtensionContext,
@@ -155,8 +157,42 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   private async handleMessage(msg: any): Promise<void> {
     switch (msg.type) {
       case 'openTab': {
+        // Forzar sincronización de estado antes de buscar la tab
+        // (crítico para preview tabs que pueden haber cambiado)
+        if (this.syncService?.syncActiveState) {
+          this.syncService.syncActiveState();
+          // Esperar un momento para que la sincronización se propague completamente
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        
         const tab = this.findTab(msg.tabId);
-        if (tab) { await tab.activate(); }
+        if (!tab) {
+          console.warn('[TabsLover] Tab not found for activation (likely closed):', msg.tabId);
+          // La tab ya no existe - hacer refresh inmediato para limpiar
+          this.refresh();
+          return;
+        }
+        
+        // If this tab is in preview mode, track it as the last preview source
+        if (tab.state.viewMode === 'preview') {
+          this.stateService.setLastMarkdownPreviewTabId(tab.metadata.id);
+        }
+        
+        try {
+          await tab.activate();
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          console.error('[TabsLover] Failed to activate tab:', tab.metadata.label, errorMsg);
+          
+          // Si el error indica que la tab no existe o no corresponde al documento activo,
+          // hacer refresh para limpiar
+          if (errorMsg.includes('not found') || 
+              errorMsg.includes('no longer exists') ||
+              errorMsg.includes('does not correspond')) {
+            console.log('[TabsLover] Tab was closed/removed or mismatch, refreshing to sync state');
+            this.refresh();
+          }
+        }
         break;
       }
       case 'closeTab': {
@@ -205,7 +241,37 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       case 'fileAction': {
         const tab = this.findTab(msg.tabId);
         if (tab?.metadata.uri && msg.actionId) {
-          await this.fileActionRegistry.execute(msg.actionId, tab.metadata.uri);
+          // For Markdown toggle actions, update viewMode state
+          const isMarkdownToggle = msg.actionId === 'openMarkdownPreview' || msg.actionId === 'editMarkdownSource';
+          
+          if (isMarkdownToggle) {
+            // Simply toggle the viewMode state for THIS tab only
+            // Each tab remembers its own preference (preview vs source)
+            const newViewMode: TabViewMode = tab.state.viewMode === 'preview' ? 'source' : 'preview';
+            tab.state.viewMode = newViewMode;
+            this.stateService.updateTab(tab);
+            console.log('[WebviewProvider] Toggled viewMode for:', tab.metadata.label, '→', tab.state.viewMode);
+            
+            // Track which tab last activated the preview (for unique identification)
+            if (msg.actionId === 'openMarkdownPreview') {
+              this.stateService.setLastMarkdownPreviewTabId(tab.metadata.id);
+            } else {
+              // If switching back to source, clear the tracker (if this was the active preview)
+              if (this.stateService.lastMarkdownPreviewTabId === tab.metadata.id) {
+                this.stateService.setLastMarkdownPreviewTabId(null);
+              }
+            }
+            
+            // If the tab is not active, activate it (the action will show preview or source)
+            if (!tab.state.isActive) {
+              tab.state.isActive = true;
+              this.stateService.updateTabSilent(tab);
+            }
+          }
+          
+          // Pass context for dynamic action execution
+          const context = { viewMode: tab.state.viewMode };
+          await this.fileActionRegistry.execute(msg.actionId, tab.metadata.uri, context);
         }
         break;
       }

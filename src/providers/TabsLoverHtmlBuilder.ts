@@ -158,16 +158,100 @@ export class TabsLoverHtmlBuilder {
     enableDragDrop: boolean,
     compactMode: boolean,
   ): Promise<string> {
-    const sorted = [...tabs].sort((a, b) => {
+    // Separate parent tabs (no parentId) from child tabs (have parentId)
+    const parentTabs = tabs.filter(t => !t.metadata.parentId);
+    const childTabs = tabs.filter(t => t.metadata.parentId);
+    
+    // Build a map of parentId -> children
+    const childrenByParent = new Map<string, SideTab[]>();
+    for (const child of childTabs) {
+      const parentId = child.metadata.parentId!;
+      if (!childrenByParent.has(parentId)) {
+        childrenByParent.set(parentId, []);
+      }
+      childrenByParent.get(parentId)!.push(child);
+    }
+    
+    // Sort parent tabs: pinned first
+    const sortedParents = [...parentTabs].sort((a, b) => {
       if (a.state.isPinned && !b.state.isPinned) { return -1; }
       if (!a.state.isPinned && b.state.isPinned) { return 1; }
       return 0;
     });
 
-    const rendered = await Promise.all(
-      sorted.map(t => this.renderTab(t, showPath, copilotReady, enableDragDrop, compactMode))
-    );
+    // Render parents with their children immediately after
+    const rendered: string[] = [];
+    for (const parent of sortedParents) {
+      // Render parent
+      rendered.push(await this.renderTab(parent, showPath, copilotReady, enableDragDrop, compactMode));
+      
+      // Render children (always compact, no path, attached to parent)
+      const children = childrenByParent.get(parent.metadata.id) || [];
+      for (const child of children) {
+        rendered.push(await this.renderChildTab(child, copilotReady, parent.metadata.id));
+      }
+    }
+    
+    // Render orphan child tabs (their parent file tab is not open)
+    // These are shown as regular compact tabs with indication they're diffs
+    for (const child of childTabs) {
+      if (!parentTabs.some(p => p.metadata.id === child.metadata.parentId)) {
+        rendered.push(await this.renderOrphanChildTab(child, showPath, copilotReady, compactMode));
+      }
+    }
+    
     return rendered.join('');
+  }
+
+  /**
+   * Renders a child tab (diff) attached to its parent.
+   * Always compact, indented, no path shown.
+   */
+  private async renderChildTab(
+    tab: SideTab,
+    copilotReady: boolean,
+    parentId: string,
+  ): Promise<string> {
+    const activeClass = tab.state.isActive ? ' active' : '';
+    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
+    const dataParentId = `data-parentid="${this.esc(parentId)}"`;
+    const stateIndicator = getStateIndicator(tab);
+
+    const chatBtn = copilotReady && tab.metadata.uri
+      ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
+      : '';
+
+    const closeBtn = tab.state.capabilities.canClose
+      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
+      : '';
+
+    // Use diff icon for child tabs
+    const iconHtml = '<span class="codicon codicon-diff"></span>';
+
+    return `<div class="tab child-tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" data-pinned="false" ${dataGroupId} ${dataParentId}>
+      <span class="tab-icon">${iconHtml}</span>
+      <div class="tab-text">
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}</div>
+      </div>
+      ${stateIndicator.html}
+      <span class="tab-actions">
+        ${chatBtn}${closeBtn}
+      </span>
+    </div>`;
+  }
+
+  /**
+   * Renders an orphan child tab (diff whose parent file is not open).
+   * Shown with full info since there's no parent context.
+   */
+  private async renderOrphanChildTab(
+    tab: SideTab,
+    showPath: boolean,
+    copilotReady: boolean,
+    compactMode: boolean,
+  ): Promise<string> {
+    // Render like a normal tab but with diff icon prefix
+    return this.renderTab(tab, showPath, copilotReady, false, compactMode);
   }
 
   private async renderTab(
@@ -186,20 +270,24 @@ export class TabsLoverHtmlBuilder {
       ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>'
       : '';
 
-    const fileActionBtn = this.renderFileActionButton(tab);
+    const fileActionBtn = tab.state.capabilities.canTogglePreview
+      ? this.renderFileActionButton(tab)
+      : '';
 
     const chatBtn = copilotReady && tab.metadata.uri
       ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
       : '';
 
-    const closeBtn = `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`;
+    const closeBtn = tab.state.capabilities.canClose
+      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
+      : '';
 
     const iconHtml = await this.iconRenderer.render(tab);
 
     // Compact mode: same layout as normal, single-line text (name + inline path)
     if (compactMode) {
-      const pathSuffix = showPath && tab.metadata.description
-        ? `<span class="tab-path-inline">${this.esc(tab.metadata.description)}</span>`
+      const pathSuffix = showPath && tab.metadata.detailLabel
+        ? `<span class="tab-path-inline">${this.esc(tab.metadata.detailLabel)}</span>`
         : '';
       return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
       <span class="tab-icon">${iconHtml}</span>
@@ -214,8 +302,8 @@ export class TabsLoverHtmlBuilder {
     }
 
     // Normal mode: two-line layout
-    const pathHtml = showPath && tab.metadata.description
-      ? `<div class="tab-path">${this.esc(tab.metadata.description)}</div>`
+    const pathHtml = showPath && tab.metadata.detailLabel
+      ? `<div class="tab-path">${this.esc(tab.metadata.detailLabel)}</div>`
       : '';
 
     return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
@@ -236,7 +324,9 @@ export class TabsLoverHtmlBuilder {
   private renderFileActionButton(tab: SideTab): string {
     if (!this.fileActionRegistry || !tab.metadata.uri) { return ''; }
 
-    const resolved = this.fileActionRegistry.resolve(tab.metadata.label, tab.metadata.uri);
+    // Pass viewMode context for dynamic actions (like MD toggle)
+    const context = { viewMode: tab.state.viewMode };
+    const resolved = this.fileActionRegistry.resolve(tab.metadata.label, tab.metadata.uri, context);
     if (!resolved) { return ''; }
 
     return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;

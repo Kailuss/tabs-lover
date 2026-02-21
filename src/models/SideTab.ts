@@ -107,40 +107,38 @@ export type SideTabState = {
   isDirty            : boolean;
   isPinned           : boolean;
   isPreview          : boolean;  // VS Code preview tab (italic, replaceable)
-  
+
   //: LOCATION
   groupId            : number;
   viewColumn         : vscode.ViewColumn;
   indexInGroup       : number;
-  
+
   //: VISUALIZATION MODE
   viewMode           : TabViewMode;  // How the tab is visualized: source | preview | split
-  /** @deprecated Use viewMode instead. Kept for backward compatibility. */
-  previewMode        : boolean;  // For MD files: true = show preview, false = show source
-  
+
   //: CAPABILITIES
+
   capabilities       : SideTabCapabilities;  // What actions can be performed
-  
   //: HIERARCHY
   hasChildren        : boolean;   // Has child tabs (diffs, previews)
   isChild            : boolean;   // Is a child tab of another
   isExpanded         : boolean;   // If has children: is expanded in UI?
   childrenCount      : number;    // Number of child tabs (for badge display)
-  
+
   //: UI STATE
   isLoading          : boolean;   // Loading content (large files, remote)
   hasError           : boolean;   // Error loading/syncing
   errorMessage?      : string;    // Error description
   isHighlighted      : boolean;   // Temporarily highlighted (search, navigation)
-  
+
   //: TRACKING
   lastAccessTime     : number;    // Timestamp of last access
   syncVersion        : number;    // Sync version (prevent stale updates)
-  
+
   //: DECORATIONS
   gitStatus          : GitStatus;  // Git decoration state
   diagnosticSeverity : vscode.DiagnosticSeverity | null;  // Highest severity (error > warning)
-  
+
   //: PROTECTION
   isTransient        : boolean;   // Closes automatically (like VS Code preview)
   isProtected        : boolean;   // Requires confirmation to close

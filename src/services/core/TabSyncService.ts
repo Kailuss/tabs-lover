@@ -3,6 +3,7 @@ import * as path                                               from 'path';
 import { TabStateService }                                     from './TabStateService';
 import { GitSyncService }                                      from '../integration/GitSyncService';
 import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../../models/SideTab';
+import { SideTabHelpers }                                      from '../../models/SideTabHelpers';
 import { createTabGroup }                                      from '../../models/SideTabGroup';
 import { formatFilePath }                                      from '../../utils/helpers';
 
@@ -11,6 +12,9 @@ import { formatFilePath }                                      from '../../utils
  * En palabras sencillas: escucha los eventos del editor (abrir/cerrar/mover)
  * y actualiza el `TabStateService` para que la UI muestre datos fiables.
  * Esta capa solo transforma datos — no hace operaciones de disco pesadas.
+ * 
+ * NOTA: Las tabs de Markdown Preview se filtran directamente en convertToSideTab()
+ * y se manejan como estado toggle (viewMode) en la tab del archivo fuente.
  */
 export class TabSyncService {
   private disposables: vscode.Disposable[] = [];
@@ -35,7 +39,9 @@ export class TabSyncService {
 
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor) { this.updateActiveTab(editor.document.uri); }
+        if (editor) {
+          this.updateActiveTab(editor.document.uri);
+        }
       }),
     );
 
@@ -58,7 +64,12 @@ export class TabSyncService {
   private handleTabChanges(e: vscode.TabChangeEvent): void {
     for (const tab of e.opened) {
       const st = this.convertToSideTab(tab);
-      if (st) { this.stateService.addTab(st); }
+      if (st) {
+        if (st.state.isPreview) {
+          console.log('[TabSync] Opened preview tab:', st.metadata.label);
+        }
+        this.stateService.addTab(st);
+      }
     }
 
     // For closed tabs, don't try to regenerate the ID (it may not match the
@@ -83,6 +94,11 @@ export class TabSyncService {
         existing.state.isPinned  === tab.isPinned  &&
         existing.state.isPreview === tab.isPreview &&
         existing.state.isActive  !== tab.isActive;
+
+      // Log cuando una preview tab se convierte en permanente
+      if (existing.state.isPreview && !tab.isPreview) {
+        console.log('[TabSync] Preview tab became permanent:', existing.metadata.label);
+      }
 
       existing.state.isActive  = tab.isActive;
       existing.state.isDirty   = tab.isDirty;
@@ -170,11 +186,58 @@ export class TabSyncService {
   }
 
   /**
-   * Sincroniza el estado isActive de todas las tabs con el estado real de VS Code.
-   * Esto es especialmente importante para webview tabs (Settings, Extensions, etc.)
-   * que no disparan onDidChangeActiveTextEditor.
+   * Sincroniza el estado isActive e isPreview de todas las tabs con el estado real de VS Code.
+   * Esto es especialmente importante para:
+   * - Webview tabs (Settings, Extensions, etc.) que no disparan onDidChangeActiveTextEditor.
+   * - Preview tabs que pueden convertirse en permanentes sin disparar el evento onChange.
+   * - Markdown Previews: cuando están activos, la tab del archivo fuente debe mostrarse activa.
+   * 
+   * NOTA: viewMode es una preferencia persistente del usuario por tab.
+   * Cada tab recuerda si prefiere verse en modo preview o source.
+   * 
+   * Público para permitir sincronización bajo demanda antes de operaciones críticas.
    */
-  private syncActiveState(): void {
+  public syncActiveState(): void {
+    // First, detect if a Markdown Preview is active (we filter these tabs)
+    // If so, we need to mark the corresponding source file tab as active
+    let activeMarkdownSourceId: string | null = null;
+    
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.isActive && tab.input instanceof vscode.TabInputWebview) {
+          // Check if it's a Markdown Preview
+          if (tab.input.viewType === 'markdown.preview' || 
+              (tab.label.startsWith('Preview ') && (tab.label.endsWith('.md') || tab.label.endsWith('.mdx') || tab.label.endsWith('.markdown')))) {
+            
+            // PRIMARY: Use lastMarkdownPreviewTabId - this is the definitive source
+            // because WE control when markdown.showPreview is called
+            const lastPreviewTabId = this.stateService.lastMarkdownPreviewTabId;
+            if (lastPreviewTabId) {
+              const lastTab = this.stateService.getTab(lastPreviewTabId);
+              // Verify it's still in the same group
+              if (lastTab && lastTab.state.groupId === group.viewColumn) {
+                activeMarkdownSourceId = lastPreviewTabId;
+              }
+            }
+            
+            // FALLBACK: If no tracked tab, try to find by filename (less accurate)
+            if (!activeMarkdownSourceId) {
+              const sourceFileName = tab.label.replace('Preview ', '');
+              for (const sourceTab of group.tabs) {
+                if (sourceTab.input instanceof vscode.TabInputText) {
+                  if (sourceTab.input.uri.path.endsWith('/' + sourceFileName) || 
+                      sourceTab.input.uri.path.endsWith('\\' + sourceFileName)) {
+                    activeMarkdownSourceId = `${sourceTab.input.uri.toString()}-${group.viewColumn}`;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
         const id = this.generateIdFromNativeTab(tab);
@@ -183,8 +246,21 @@ export class TabSyncService {
         const existing = this.stateService.getTab(id);
         if (!existing) { continue; }
 
-        if (existing.state.isActive !== tab.isActive) {
-          existing.state.isActive = tab.isActive;
+        // Determine if this tab should be active
+        let shouldBeActive = tab.isActive;
+        
+        // If a Markdown Preview is active, mark its source file as active instead
+        if (activeMarkdownSourceId && existing.metadata.id === activeMarkdownSourceId) {
+          shouldBeActive = true;
+        }
+
+        // Sincronizar isActive e isPreview para mantener el estado actualizado
+        const activeChanged = existing.state.isActive !== shouldBeActive;
+        const previewChanged = existing.state.isPreview !== tab.isPreview;
+        
+        if (activeChanged || previewChanged) {
+          existing.state.isActive = shouldBeActive;
+          existing.state.isPreview = tab.isPreview;
           this.stateService.updateTabSilent(existing);
         }
       }
@@ -196,6 +272,9 @@ export class TabSyncService {
    * internal tab whose ID is no longer present. This is more reliable than
    * trying to regenerate the ID from a closed-tab event (which may have
    * different properties than the original open event).
+   * 
+   * Especialmente importante para preview tabs que pueden ser reemplazadas
+   * automáticamente por VS Code sin disparar un evento explícito de cierre.
    */
   private removeOrphanedTabs(): void {
     const nativeIds = new Set<string>();
@@ -208,6 +287,8 @@ export class TabSyncService {
 
     for (const tab of this.stateService.getAllTabs()) {
       if (!nativeIds.has(tab.metadata.id)) {
+        console.log('[TabSync] Removing orphaned tab:', tab.metadata.label, 
+                    '(wasPreview:', tab.state.isPreview, ')');
         this.stateService.removeTab(tab.metadata.id);
       }
     }
@@ -287,9 +368,21 @@ export class TabSyncService {
       tooltip     = tab.label;
       fileType    = path.extname(uri.fsPath);
       tabType     = 'diff';
+      
+      // Extract short label for child tab display (e.g., "Working Tree" from "file.ts (Working Tree)")
+      const match = label.match(/\(([^)]+)\)$/);
+      if (match) {
+        label = match[1]; // Just "Working Tree", "Staged Changes", etc.
+      }
     }
     else if (tab.input instanceof vscode.TabInputWebview) {
       // Webview tabs (Markdown Preview, Release Notes, extension webviews…)
+      // FILTER OUT Markdown Previews - they are handled as a toggle state on the source file tab
+      if (tab.input.viewType === 'markdown.preview' || 
+          tab.label.startsWith('Preview ') && tab.label.endsWith('.md')) {
+        console.log('[TabSync] Filtering out Markdown Preview tab (handled as toggle):', tab.label);
+        return null;
+      }
       uri         = undefined;
       label       = tab.label;
       description = undefined;
@@ -326,18 +419,31 @@ export class TabSyncService {
 
     const viewColumn = tab.group.viewColumn;
 
-    const metadata: SideTabMetadata = {
+    // Calculate parentId for diff tabs (link to corresponding file tab)
+    let parentId: string | undefined;
+    if (tabType === 'diff' && uri) {
+      // The parent is the file tab with the same URI in the same group
+      parentId = `${uri.toString()}-${viewColumn}`;
+    }
+
+    // Build base metadata
+    const baseMetadata: SideTabMetadata = {
       id: this.generateId(label, uri, viewColumn, tabType),
+      parentId,
       uri,
       label,
-      description,
-      tooltip,
-      fileType,
+      detailLabel: description,
+      tooltipText: tooltip,
+      fileExtension: fileType,
       tabType,
       viewType,
     };
 
-    const state: SideTabState = {
+    // ✨ FASE 2: Enrich metadata with computed properties
+    const metadata = SideTabHelpers.enrichMetadata(baseMetadata);
+
+    // Build base state from VS Code tab
+    const baseState = {
       isActive       : tab.isActive,
       isDirty        : tab.isDirty,
       isPinned       : tab.isPinned,
@@ -345,9 +451,64 @@ export class TabSyncService {
       groupId        : viewColumn,
       viewColumn,
       indexInGroup   : index ?? 0,
-      lastAccessTime : Date.now(),
       gitStatus      : uri ? this.gitSyncService.getGitStatus(uri) : null,
       diagnosticSeverity : uri ? this.getDiagnosticSeverity(uri) : null,
+    };
+
+    // ✨ FASE 3: Get default values for new properties
+    const defaultState = SideTabHelpers.createDefaultState();
+
+    // Merge defaults + base (base overrides defaults)
+    const stateWithDefaults = { ...defaultState, ...baseState };
+
+    // ✨ FASE 3: Compute capabilities based on metadata + state
+    const capabilities = SideTabHelpers.computeCapabilities(metadata, stateWithDefaults);
+
+    // ✨ FASE 4: Map legacy previewMode to new viewMode
+    const viewMode = SideTabHelpers.mapPreviewModeToViewMode(false); // Default to source
+
+    // Build final state with all required properties
+    const state: SideTabState = {
+      // VS CODE NATIVE STATE
+      isActive: tab.isActive,
+      isDirty: tab.isDirty,
+      isPinned: tab.isPinned,
+      isPreview: tab.isPreview,
+      
+      // LOCATION
+      groupId: viewColumn,
+      viewColumn,
+      indexInGroup: index ?? 0,
+      
+      // VISUALIZATION MODE
+      viewMode,
+      
+      // CAPABILITIES
+      capabilities,
+      
+      // HIERARCHY
+      hasChildren: false, // Will be computed later when children are detected
+      isChild: tabType === 'diff',
+      isExpanded: false,
+      childrenCount: 0,
+      
+      // UI STATE
+      isLoading: false,
+      hasError: false,
+      errorMessage: undefined,
+      isHighlighted: false,
+      
+      // TRACKING
+      lastAccessTime: Date.now(),
+      syncVersion: 0,
+      
+      // DECORATIONS
+      gitStatus: uri ? this.gitSyncService.getGitStatus(uri) : null,
+      diagnosticSeverity: uri ? this.getDiagnosticSeverity(uri) : null,
+      
+      // PROTECTION
+      isTransient: false,
+      isProtected: false,
     };
 
     return new SideTab(metadata, state);

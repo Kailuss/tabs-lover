@@ -23,7 +23,7 @@ export class IconRenderer {
    * Genera el HTML del icono para una tab.
    */
   async render(tab: SideTab): Promise<string> {
-    const { tabType, viewType, label, uri, fileType } = tab.metadata;
+    const { tabType, viewType, label, uri, fileExtension: fileType } = tab.metadata;
 
     // Webviews y tabs desconocidas usan codicons con color estándar
     if (tabType === 'webview' || tabType === 'unknown') {
