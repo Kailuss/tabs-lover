@@ -84,8 +84,6 @@ function copyWebviewResources() {
 		copyDir(codiconsDir, distCodiconsDir);
 	}
 
-	// Note: seti.woff removed - VS Code provides file icons through its API
-
 	console.log('[build] Webview resources copied to dist/');
 }
 
