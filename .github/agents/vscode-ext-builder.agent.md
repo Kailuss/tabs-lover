@@ -1,5 +1,5 @@
 ---
-name: Tabs Lover Expert
+name: Dr. Tabs
 description: Specialist in Tabs Lover extension architecture, WebviewView, and modular actions
 tools: ['read/problems', 'read/readFile', 'read/getTaskOutput', 'edit', 'search', 'web', 'agent', 'todo']
 model: Claude Sonnet 4.5 (copilot)
