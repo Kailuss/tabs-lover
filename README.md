@@ -46,7 +46,7 @@ When you split your editor, Tabs Lover groups your tabs automatically. Each grou
 
 ## Requirements
 
-- VS Code **1.108.0** or later
+- VS Code **1.85.0** or later
 
 ## ⚙️ Customize It Your Way
 
@@ -82,7 +82,7 @@ Most actions are just a right-click away in the tab list!
 
 ## 🛠️ For Developers
 
-Want to contribute or customize Tabs Lover? Check out [INFO.md](INFO.md) for the complete architecture guide.
+Want to contribute or customize Tabs Lover? See the documentation index in [docs/INDEX.md](docs/INDEX.md) (secciones didácticas en español).
 
 **Quick start:**
 ```bash

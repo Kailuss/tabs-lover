@@ -11,7 +11,7 @@ import { registerTabCommands } from './commands/tabCommands';
 import { registerCopilotCommands } from './commands/copilotCommands';
 import { Logger } from './utils/logger';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   Logger.initialize();
   Logger.log('Activating Tabs Lover…');
 
@@ -25,12 +25,15 @@ export function activate(context: vscode.ExtensionContext) {
     const themeService  = new ThemeService();
     const copilotService = new CopilotService();
 
-    // Initialise icon manager (loads icon map in background)
-    iconManager.initialize(context);
+    // Initialise icon manager (loads icon map)
+    // We await this to ensure icons are ready before first render
+    await iconManager.initialize(context);
+    
     // WebviewView provider
     const provider = new TabsLoverWebviewProvider(
       context.extensionUri,
       stateService,
+      syncService,
       copilotService,
       iconManager,
       context,
@@ -69,6 +72,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Refresh on theme change
     themeService.onDidChangeTheme(() => provider.refresh());
+    
+    // Refresh when icons are reloaded (e.g., theme change)
+    iconManager.onDidInitialize(() => provider.refresh());
 
     Logger.log('Tabs Lover activated successfully');
   } catch (error) {

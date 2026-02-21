@@ -1,7 +1,20 @@
 /* ===== Tabs Lover - Main Stylesheet ===== */
 /* This file imports all modular stylesheets */
 
+/* Note: File icons are provided by VS Code's icon theme API */
+
+.seti-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+  text-align: center;
+  width: 16px;
+  height: 16px;
+}
+
 @import './base.css';
+@import './view-header.css';
 @import './group-header.css';
 @import './tab-layout.css';
 @import './tab-states.css';

@@ -1,20 +1,50 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import type { FileAction } from './types';
+import type { FileAction, DynamicFileAction } from './types';
 import { byExtension } from './matchers';
+
+/**
+ * Acción dinámica para Markdown: toggle entre preview y source.
+ * - Si viewMode='source' → muestra icono "preview" → acción: abrir preview
+ * - Si viewMode='preview' → muestra icono "edit" → acción: volver al source
+ */
+export const MARKDOWN_TOGGLE_ACTION: DynamicFileAction = {
+  id: 'toggleMarkdownPreview',
+  setFocus: true, // Hacer focus al cambiar visualización
+  match: byExtension('.md', '.mdx', '.markdown'),
+  resolve: (context) => {
+    const isPreview = context?.viewMode === 'preview';
+    
+    if (isPreview) {
+      return {
+        icon: 'edit-code',
+        tooltip: 'Edit Source',
+        actionId: 'editMarkdownSource',
+      };
+    }
+    return {
+      icon: 'preview',
+      tooltip: 'Open Preview',
+      actionId: 'openMarkdownPreview',
+    };
+  },
+  execute: async (uri, context) => {
+    const isPreview = context?.viewMode === 'preview';
+    
+    if (isPreview) {
+      // Already in preview mode, switch back to source
+      await vscode.commands.executeCommand('vscode.open', uri);
+    } else {
+      // In source mode, open preview
+      await vscode.commands.executeCommand('markdown.showPreview', uri);
+    }
+  },
+};
 
 export const WEB_ACTIONS: FileAction[] = [
 
-  // ── Markdown: abrir preview ──
-  {
-    id      : 'previewMarkdown',
-    icon    : 'preview',
-    tooltip : 'Open Preview',
-    match   : byExtension('.md', '.mdx', '.markdown'),
-    execute : async (uri) => {
-      await vscode.commands.executeCommand('markdown.showPreview', uri);
-    },
-  },
+  // NOTE: Markdown is handled by MARKDOWN_TOGGLE_ACTION (dynamic)
+  // The static entry below is kept as fallback for registry compatibility
 
   // ── HTML: abrir en Simple Browser ──
   {

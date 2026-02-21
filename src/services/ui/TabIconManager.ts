@@ -19,22 +19,53 @@ export class TabIconManager {
   private _iconPathCache     : Map<string, string> = new Map();
   private _isPreloadingIcons : boolean = false;
   private _configListener    : vscode.Disposable | undefined;
+  private _initPromise       : Promise<void> | undefined;
+  private _onDidInitialize   = new vscode.EventEmitter<void>();
+  
+  /** Evento que se dispara cuando el mapa de iconos está listo */
+  public readonly onDidInitialize = this._onDidInitialize.event;
 
   /**
    * Inicializa el gestor de iconos y registra listeners.
    * Llamar una vez desde `activate()`; prepara la tabla de búsqueda del tema.
+   * Devuelve una Promise que se resuelve cuando los iconos están listos.
    */
-  public initialize(context: vscode.ExtensionContext): void { 
+  public initialize(context: vscode.ExtensionContext): Promise<void> { 
     this._configListener = vscode.workspace.onDidChangeConfiguration(async e => {
       if (e.affectsConfiguration('workbench.iconTheme')) {
+        console.log('[TabsLover] Icon theme changed, rebuilding map...');
         this.clearCache();
-        await this.buildIconMap(context);
+        await this.buildIconMap(context, true);
+        this._onDidInitialize.fire();
       }
     });
 
     context.subscriptions.push(this._configListener);
+    context.subscriptions.push(this._onDidInitialize);
 
-    this.buildIconMap(context).catch(err => console.error('[TabsLover] Error building initial icon map:', err));
+    this._initPromise = this.buildIconMap(context)
+      .then(() => {
+        console.log('[TabsLover] Icon map initialized:', {
+          themeId: this._iconThemeId,
+          hasMap: !!this._iconMap,
+          mapSize: this._iconMap ? Object.keys(this._iconMap).length : 0
+        });
+        this._onDidInitialize.fire();
+      })
+      .catch(err => {
+        console.error('[TabsLover] Error building initial icon map:', err);
+      });
+    
+    return this._initPromise;
+  }
+  
+  /**
+   * Espera a que la inicialización esté completa.
+   */
+  public async waitForInit(): Promise<void> {
+    if (this._initPromise) {
+      await this._initPromise;
+    }
   }
 
   /**
@@ -59,6 +90,7 @@ export class TabIconManager {
 
       // Si el tema no cambió y ya tenemos el mapa, no volver a reconstruir.
       if (this._iconThemeId === iconTheme && this._iconMap && !forceRebuild) {
+        console.log('[TabsLover] Icon map already exists for theme:', iconTheme);
         return;
       }
 
@@ -69,19 +101,24 @@ export class TabIconManager {
 
       // Fallback a 'vs-seti' si no encontramos el tema configurado
       if (!ext) {
+        console.log('[TabsLover] Theme not found, trying vs-seti fallback:', iconTheme);
         ext = this.findIconThemeExtension('vs-seti');
         themeId = 'vs-seti';
 
         if (!ext) {
+          console.warn('[TabsLover] No icon theme found (not even vs-seti)');
           this._iconMap     = {};
           this._iconThemeId = iconTheme;
           return;
         }
       }
 
+      console.log('[TabsLover] Building icon map for theme:', themeId, 'from extension:', ext.id);
+
       // Buscar la entrada del tema en el package.json de la extensión
       const themeContribution = ext.packageJSON.contributes.iconThemes.find( (t: any) => t.id === themeId );
       if (!themeContribution) {
+        console.warn('[TabsLover] Theme contribution not found in extension');
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -89,10 +126,12 @@ export class TabIconManager {
 
       // Resolver la ruta absoluta al archivo JSON del tema
       themePath = path.join(ext.extensionPath, themeContribution.path);
+      console.log('[TabsLover] Theme path:', themePath);
 
       try {
         await fsp.access(themePath);
       } catch {
+        console.warn('[TabsLover] Theme file not accessible:', themePath);
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -134,6 +173,15 @@ export class TabIconManager {
           iconMap[`lang:${lang.toLowerCase()}`] = value as string;
         });
       }
+
+      // Log de archivos especiales mapeados para debugging
+      const specialFiles = ['.vscodeignore', '.gitignore', '.npmignore', '.dockerignore'];
+      specialFiles.forEach(file => {
+        const key = `name:${file}`;
+        if (iconMap[key]) {
+          console.log(`[TabsLover] Special file mapped: ${file} → ${iconMap[key]}`);
+        }
+      });
 
       this._iconMap = iconMap;
     } catch (error) {
@@ -209,6 +257,15 @@ export class TabIconManager {
         } else if (languageId && this._iconMap[`lang:${languageId.toLowerCase()}`]) {
           iconId = this._iconMap[`lang:${languageId.toLowerCase()}`];
         }
+        
+        // Archivos especiales: *ignore (gitignore, npmignore, dockerignore, vscodeignore)
+        if (!iconId && fileNameLower.endsWith('ignore')) {
+          // Buscar patrón genérico "ignore" en diferentes formas
+          const gitignoreId = this._iconMap['name:.gitignore'];
+          const ignoreExtId = this._iconMap['ext:ignore'];
+          const ignoreLangId = this._iconMap['lang:ignore'];
+          iconId = gitignoreId || ignoreLangId || ignoreExtId;
+        }
 
         // Try inferring language from extension
         if (!iconId) {
@@ -248,22 +305,46 @@ export class TabIconManager {
             );
             if (fileIconKey) {
               iconId = fileIconKey;
+            } else {
+              // Fallback final: icono de archivo genérico (font-based)
+              const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+              this._iconCache.set(cacheKey, fallbackIcon);
+              return fallbackIcon;
             }
           }
         }
 
         if (!iconId || !themeJson.iconDefinitions) {
-          return undefined;
+          // Fallback final si no hay iconId o definiciones
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
         const iconDef = themeJson.iconDefinitions[iconId];
         if (!iconDef) {
-          return undefined;
+          // Fallback final si no se encuentra la definición del icono
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
+        // Check for SVG-based theme (iconPath) or font-based theme (fontCharacter)
         iconPath = iconDef.iconPath || iconDef.path;
+        
+        if (!iconPath && iconDef.fontCharacter) {
+          // Font-based theme (like vs-seti): return special marker to use font rendering
+          // The webview will handle this with CSS @font-face
+          const fontIconData = `font-icon:${iconDef.fontCharacter}:${iconDef.fontColor || '#cccccc'}`;
+          this._iconCache.set(cacheKey, fontIconData);
+          return fontIconData;
+        }
+        
         if (!iconPath) {
-          return undefined;
+          // iconDef exists but has neither fontCharacter nor iconPath — use generic file icon
+          const fallbackIcon = 'font-icon:\\E023:#d4d7d6';
+          this._iconCache.set(cacheKey, fallbackIcon);
+          return fallbackIcon;
         }
 
         this._iconPathCache.set(cacheKey, iconPath);

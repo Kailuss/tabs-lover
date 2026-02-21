@@ -2,27 +2,32 @@
 // Served as a static resource via webview.asWebviewUri().
 // Only loaded when drag & drop is enabled in settings.
 
-const TAB_H          = 43;  // Altura de cada tab incluyendo border (px)
 const DRAG_THRESHOLD = 5;   // Pixels antes de iniciar el drag
+let TAB_H            = 43;  // Altura dinámica (se actualiza según modo compacto)
 
 let isDragging         = false;
 let startY             = 0;
 let startMouseY        = 0;
-let sourceEl           = null;  // tab DOM original
+let sourceEl           = null;  // tab DOM original (parent tab)
+let sourceChildren     = [];    // child tabs attached to source (for block drag)
 let cloneEl            = null;  // clon flotante
 let siblings           = [];    // tabs reordenables (no pinned, excluyendo la arrastrada)
 let originalOrder      = [];    // posiciones originales para calcular desplazamientos
 let currentInsertIndex = -1;    // índice actual de inserción en la lista lógica
 let sourceIndex        = -1;    // índice original de la tab arrastrada
 let tabGroupId         = null;
+let blockHeight        = 0;     // Combined height of parent + children
 
 // --- Mousedown: preparar un posible drag ---
 document.addEventListener('mousedown', e => {
-  if (e.button !== 0) {return;}
+  if (e.button !== 0) { return; }
   const tab = e.target.closest('.tab');
-  if (!tab) {return;}
-  if (e.target.closest('button')) {return;}
-  if (tab.dataset.pinned === 'true') {return;}
+  if (!tab) { return; }
+  if (e.target.closest('button')) { return; }
+  if (tab.dataset.pinned === 'true') { return; }
+  
+  // Child tabs cannot be dragged individually - they move with their parent
+  if (tab.classList.contains('child-tab')) { return; }
 
   sourceEl    = tab;
   startMouseY = e.clientY;
@@ -32,17 +37,25 @@ document.addEventListener('mousedown', e => {
 
 // --- Mousemove: iniciar o continuar el drag ---
 document.addEventListener('mousemove', e => {
-  if (!sourceEl) {return;}
+  if (!sourceEl) { return; }
 
   if (!isDragging) {
-    if (Math.abs(e.clientY - startMouseY) < DRAG_THRESHOLD) {return;}
+    if (Math.abs(e.clientY - startMouseY) < DRAG_THRESHOLD) { return; }
     beginDrag(e);
   }
 
   const dy = e.clientY - startMouseY;
   cloneEl.style.transform = 'translateY(' + dy + 'px)';
+  
+  // Move children clones with parent
+  sourceChildren.forEach((child, i) => {
+    const childClone = document.querySelector('.drag-clone[data-child-index="' + i + '"]');
+    if (childClone) {
+      childClone.style.transform = 'translateY(' + dy + 'px)';
+    }
+  });
 
-  const cloneCenter = startY + (TAB_H / 2) + dy;
+  const cloneCenter = startY + (blockHeight / 2) + dy;
   updateSiblingPositions(cloneCenter);
 });
 
@@ -64,20 +77,48 @@ function beginDrag() {
   isDragging = true;
   document.body.classList.add('drag-active');
 
+  // Detectar altura real de la tab (compacto: 26px, normal: 42px) + 1px de border
+  const rect = sourceEl.getBoundingClientRect();
+  TAB_H = Math.round(rect.height) + 1;
+
+  // Find child tabs attached to this parent
+  const parentTabId = sourceEl.dataset.tabid;
+  sourceChildren = Array.from(document.querySelectorAll('.tab.child-tab[data-parentid="' + CSS.escape(parentTabId) + '"]'));
+  
+  // Calculate total block height (parent + children)
+  blockHeight = TAB_H;
+  sourceChildren.forEach(child => {
+    blockHeight += Math.round(child.getBoundingClientRect().height) + 1;
+  });
+
+  // Get all draggable tabs (parent tabs only, not pinned, not child tabs)
   const allTabs  = Array.from(document.querySelectorAll('.tab[data-groupid="' + tabGroupId + '"]'));
-  const unpinned = allTabs.filter(t => t.dataset.pinned !== 'true');
-  sourceIndex        = unpinned.indexOf(sourceEl);
+  const parentTabs = allTabs.filter(t => t.dataset.pinned !== 'true' && !t.classList.contains('child-tab'));
+  sourceIndex        = parentTabs.indexOf(sourceEl);
   currentInsertIndex = sourceIndex;
-  siblings           = unpinned.filter(t => t !== sourceEl);
+  siblings           = parentTabs.filter(t => t !== sourceEl);
 
-  // Guardar posiciones originales (sus rect.top)
-  originalOrder = siblings.map(t => ({
-    el: t,
-    origTop: t.getBoundingClientRect().top,
-  }));
+  // Guardar posiciones originales (sus rect.top) y sus alturas (including their children)
+  originalOrder = siblings.map(t => {
+    const siblingRect = t.getBoundingClientRect();
+    const siblingId = t.dataset.tabid;
+    const siblingChildren = document.querySelectorAll('.tab.child-tab[data-parentid="' + CSS.escape(siblingId) + '"]');
+    
+    // Calculate total height for this sibling block
+    let totalHeight = Math.round(siblingRect.height) + 1;
+    siblingChildren.forEach(child => {
+      totalHeight += Math.round(child.getBoundingClientRect().height) + 1;
+    });
+    
+    return {
+      el: t,
+      children: Array.from(siblingChildren),
+      origTop: siblingRect.top,
+      height: totalHeight,
+    };
+  });
 
-  // Crear clon flotante
-  const rect  = sourceEl.getBoundingClientRect();
+  // Crear clon flotante para parent
   cloneEl     = sourceEl.cloneNode(true);
   cloneEl.classList.add('drag-clone');
   cloneEl.style.top    = rect.top    + 'px';
@@ -86,21 +127,46 @@ function beginDrag() {
   cloneEl.style.height = rect.height + 'px';
   document.body.appendChild(cloneEl);
 
+  // Create clones for children
+  let childTop = rect.top + rect.height;
+  sourceChildren.forEach((child, i) => {
+    const childRect = child.getBoundingClientRect();
+    const childClone = child.cloneNode(true);
+    childClone.classList.add('drag-clone');
+    childClone.dataset.childIndex = i;
+    childClone.style.top    = childTop + 'px';
+    childClone.style.left   = childRect.left + 'px';
+    childClone.style.width  = childRect.width + 'px';
+    childClone.style.height = childRect.height + 'px';
+    document.body.appendChild(childClone);
+    childTop += childRect.height;
+    
+    child.classList.add('drag-placeholder');
+  });
+
   sourceEl.classList.add('drag-placeholder');
-  siblings.forEach(t => t.classList.add('drag-shifting'));
+  
+  // Mark all parent siblings and their children as shifting
+  siblings.forEach(t => {
+    t.classList.add('drag-shifting');
+    const sibId = t.dataset.tabid;
+    document.querySelectorAll('.tab.child-tab[data-parentid="' + CSS.escape(sibId) + '"]').forEach(c => {
+      c.classList.add('drag-shifting');
+    });
+  });
 }
 
 function updateSiblingPositions(cloneCenter) {
   let newIndex = siblings.length; // por defecto al final
 
   for (let i = 0; i < originalOrder.length; i++) {
-    if (cloneCenter < originalOrder[i].origTop + (TAB_H / 2)) {
+    if (cloneCenter < originalOrder[i].origTop + (originalOrder[i].height / 2)) {
       newIndex = i;
       break;
     }
   }
 
-  if (newIndex === currentInsertIndex) {return;}
+  if (newIndex === currentInsertIndex) { return; }
   currentInsertIndex = newIndex;
 
   for (let i = 0; i < originalOrder.length; i++) {
@@ -108,10 +174,16 @@ function updateSiblingPositions(cloneCenter) {
     const origLogical = (i < sourceIndex) ? i : i + 1;
     let   shift       = 0;
 
-    if      (origLogical < sourceIndex && i >= currentInsertIndex) { shift =  TAB_H; }
-    else if (origLogical > sourceIndex && i <  currentInsertIndex) { shift = -TAB_H; }
+    // Use blockHeight instead of single tab height for shift calculation
+    if      (origLogical < sourceIndex && i >= currentInsertIndex) { shift =  blockHeight; }
+    else if (origLogical > sourceIndex && i <  currentInsertIndex) { shift = -blockHeight; }
 
-    s.el.style.transform = shift ? ('translateY(' + shift + 'px)') : '';
+    // Apply transform to parent and all its children
+    const transform = shift ? ('translateY(' + shift + 'px)') : '';
+    s.el.style.transform = transform;
+    s.children.forEach(child => {
+      child.style.transform = transform;
+    });
   }
 }
 
@@ -157,13 +229,42 @@ function commitDrop() {
 function cancelDrag() { teardown(); }
 
 function teardown() {
-  if (cloneEl)  { cloneEl.remove(); cloneEl = null; }
-  if (sourceEl) { sourceEl.classList.remove('drag-placeholder'); sourceEl = null; }
-  siblings.forEach(t => { t.classList.remove('drag-shifting'); t.style.transform = ''; });
+  // Remove parent clone
+  if (cloneEl) { cloneEl.remove(); cloneEl = null; }
+  
+  // Remove all child clones
+  document.querySelectorAll('.drag-clone').forEach(el => el.remove());
+  
+  // Clean up source parent
+  if (sourceEl) { 
+    sourceEl.classList.remove('drag-placeholder'); 
+    sourceEl = null; 
+  }
+  
+  // Clean up source children
+  sourceChildren.forEach(child => {
+    child.classList.remove('drag-placeholder');
+    child.style.transform = '';
+  });
+  sourceChildren = [];
+  
+  // Clean up siblings and their children
+  siblings.forEach(t => { 
+    t.classList.remove('drag-shifting'); 
+    t.style.transform = ''; 
+  });
+  originalOrder.forEach(s => {
+    s.children.forEach(child => {
+      child.classList.remove('drag-shifting');
+      child.style.transform = '';
+    });
+  });
+  
   document.body.classList.remove('drag-active');
   isDragging         = false;
   siblings           = [];
   originalOrder      = [];
   currentInsertIndex = -1;
   sourceIndex        = -1;
+  blockHeight        = 0;
 }

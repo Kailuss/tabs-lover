@@ -26,14 +26,14 @@ export const CONFIGURATION_ACTIONS: FileAction[] = [
         ['Encrypt', 'Decrypt'],
         { placeHolder: 'Choose action for .env file' }
       );
-      
+
       if (!action) {
         return;
       }
-      
+
       const terminal = vscode.window.createTerminal({ name: 'dotenv-vault' });
       terminal.show();
-      
+
       if (action === 'Encrypt') {
         terminal.sendText('npx dotenv-vault encrypt');
       } else {
@@ -72,15 +72,14 @@ export const CONFIGURATION_ACTIONS: FileAction[] = [
         { modal: true },
         'Yes, Format All'
       );
-      
+
       if (!confirm) {
         return;
       }
-      
+
       const terminal = vscode.window.createTerminal({ name: 'Format Workspace' });
       terminal.show();
       terminal.sendText('npx prettier --write .');
     },
   },
-
 ];

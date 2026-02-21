@@ -19,6 +19,20 @@ export class TabStateService {
   private _onDidChangeTabState               = new vscode.EventEmitter<string>();
   readonly onDidChangeTabState               = this._onDidChangeTabState.event;
 
+  /** 
+   * ID de la última tab que activó el Markdown Preview.
+   * Se usa para saber qué tab debe mostrarse como activa cuando el preview está visible.
+   */
+  private _lastMarkdownPreviewTabId: string | null = null;
+
+  get lastMarkdownPreviewTabId(): string | null {
+    return this._lastMarkdownPreviewTabId;
+  }
+
+  setLastMarkdownPreviewTabId(tabId: string | null): void {
+    this._lastMarkdownPreviewTabId = tabId;
+  }
+
   //- Tab management
 
   // Add a tab (or update if it already exists in the group).

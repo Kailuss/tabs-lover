@@ -1,142 +1,307 @@
-import * as vscode from 'vscode';
-import { TabIconManager }        from '../services/ui/TabIconManager';
-import { SideTab }               from '../models/SideTab';
-import { SideTabGroup }          from '../models/SideTabGroup';
-import { FileActionRegistry }    from '../services/registry/FileActionRegistry';
-import { getStateIndicator }     from '../utils/stateIndicator';
-import { resolveBuiltInCodicon } from '../utils/builtinIcons';
-
 /**
  * Builder encargado de generar el HTML/CSS del webview de tabs.
- * Separado del provider para mantener responsabilidades claras y facilitar testing.
+ * Orquesta los módulos especializados para renderizado.
  *
- * Lógica de presentación delegada a módulos específicos:
- *  - getStateIndicator()     → utils/stateIndicator.ts
- *  - resolveBuiltInCodicon() → utils/builtinIcons.ts
- *  - getWebviewScript()      → webview/webviewScript.ts
- *  - getDragDropScript()     → webview/dragDropScript.ts
+ * Arquitectura:
+ *  - IconRenderer   → renderizado de iconos (font/base64/codicon)
+ *  - StylesBuilder  → CSS crítico y CSP
+ *  - types.ts       → tipos compartidos
  */
+
+import * as vscode from 'vscode';
+import { TabIconManager } from '../services/ui/TabIconManager';
+import { SideTab } from '../models/SideTab';
+import { SideTabGroup } from '../models/SideTabGroup';
+import { FileActionRegistry } from '../services/registry/FileActionRegistry';
+import { getStateIndicator } from '../utils/stateIndicator';
+import { IconRenderer, StylesBuilder, BuildHtmlOptions, WebviewResourceUris } from './html';
+
 export class TabsLoverHtmlBuilder {
+  private readonly iconRenderer: IconRenderer;
+  private readonly stylesBuilder: StylesBuilder;
+
   constructor(
-    private readonly extensionUri     : vscode.Uri,
-    private readonly iconManager      : TabIconManager,
-    private readonly context          : vscode.ExtensionContext,
+    private readonly extensionUri: vscode.Uri,
+    private readonly iconManager: TabIconManager,
+    private readonly context: vscode.ExtensionContext,
     private readonly fileActionRegistry?: FileActionRegistry,
-  ) {}
+  ) {
+    this.iconRenderer = new IconRenderer(iconManager, context);
+    this.stylesBuilder = new StylesBuilder();
+  }
 
   //= HTML PRINCIPAL
 
-  async buildHtml(
-    webview        : vscode.Webview,
-    groups         : SideTabGroup[],
-    tabHeight      : number,
-    showPath       : boolean,
-    copilotReady   : boolean,
-    enableDragDrop : boolean = false,
-    getTabsInGroup : (groupId: number) => SideTab[],
-  ): Promise<string> {
-    const codiconCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css')
-    );
-    const webviewCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'src', 'styles', 'webview.css')
-    );
-    const webviewScriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'src', 'webview', 'webview.js')
-    );
-    const dragDropScriptUri = enableDragDrop
-      ? webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'src', 'webview', 'dragdrop.js'))
-      : null;
+  /**
+   * Construye el HTML completo del webview.
+   */
+  async buildHtml(options: BuildHtmlOptions): Promise<string> {
+    const {
+      webview,
+      groups: grps,
+      getTabsInGroup: getTabs,
+      showPath: path,
+      copilotReady: copilot,
+      enableDragDrop: dragDrop = false,
+      compactMode,
+      workspaceName,
+    } = options;
 
-    let tabsHtml = '';
+    const uris = this.resolveResourceUris(webview, dragDrop);
+    const nonce = this.generateNonce();
+    const tabsHtml = await this.renderAllTabs(grps, getTabs, path, copilot, dragDrop, compactMode);
 
-    if (groups.length <= 1) {
-      const groupId = groups[0]?.id;
-      if (groupId !== undefined) {
-        tabsHtml = await this.renderTabList(getTabsInGroup(groupId), tabHeight, showPath, copilotReady, enableDragDrop);
-      }
-    } else {
-      for (const group of groups) {
-        tabsHtml += this.renderGroupHeader(group);
-        tabsHtml += await this.renderTabList(getTabsInGroup(group.id), tabHeight, showPath, copilotReady, enableDragDrop);
-      }
-    }
+    return this.assembleHtml(webview, uris, nonce, workspaceName, compactMode, tabsHtml, dragDrop);
+  }
+
+  //= RESOLUCIÓN DE RECURSOS
+
+  private resolveResourceUris(webview: vscode.Webview, enableDragDrop: boolean): WebviewResourceUris {
+    const asUri = (segments: string[]) =>
+      webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, ...segments));
+
+    return {
+      codiconCss: asUri(['dist', 'codicons', 'codicon.css']),
+      webviewCss: asUri(['dist', 'styles', 'webview.css']),
+      webviewScript: asUri(['dist', 'webview', 'webview.js']),
+      dragDropScript: enableDragDrop ? asUri(['dist', 'webview', 'dragdrop.js']) : null,
+    };
+  }
+
+  //= ENSAMBLAJE HTML
+
+  private assembleHtml(
+    webview: vscode.Webview,
+    uris: WebviewResourceUris,
+    nonce: string,
+    workspaceName: string,
+    compactMode: boolean,
+    tabsHtml: string,
+    enableDragDrop: boolean,
+  ): string {
+    const csp = this.stylesBuilder.buildCSP(webview, nonce);
+    const compactIcon = compactMode ? 'codicon-list-tree' : 'codicon-list-flat';
+
+    const headerHtml = `<div class="view-header">
+  <span class="view-header-title">${this.esc(workspaceName)}</span>
+  <span class="view-header-actions">
+    <button class="view-header-btn" data-action="refresh" title="Refresh"><span class="codicon codicon-refresh"></span></button>
+    <button class="view-header-btn" data-action="reorder" title="Reorder Tabs"><span class="codicon codicon-list-ordered"></span></button>
+    <button class="view-header-btn" data-action="toggleCompactMode" title="Toggle Compact Mode"><span class="codicon ${compactIcon}"></span></button>
+    <button class="view-header-btn" data-action="saveAll" title="Save All"><span class="codicon codicon-save-all"></span></button>
+  </span>
+</div>`;
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<link href="${codiconCssUri}" rel="stylesheet" />
-<link href="${webviewCssUri}" rel="stylesheet" />
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<link href="${uris.codiconCss}" rel="stylesheet" />
+<link href="${uris.webviewCss}" rel="stylesheet" />
 </head>
 <body>
+  ${headerHtml}
   ${tabsHtml || '<div class="empty">No open tabs</div>'}
-  <script src="${webviewScriptUri}"></script>
-  ${dragDropScriptUri ? `<script src="${dragDropScriptUri}"></script>` : ''}
+  <script nonce="${nonce}" src="${uris.webviewScript}"></script>
+  ${uris.dragDropScript ? `<script nonce="${nonce}" src="${uris.dragDropScript}"></script>` : ''}
 </body>
 </html>`;
   }
 
-  //= RENDERIZADO
+  //= RENDERIZADO DE TABS
+
+  private async renderAllTabs(
+    groups: SideTabGroup[],
+    getTabsInGroup: (groupId: number) => SideTab[],
+    showPath: boolean,
+    copilotReady: boolean,
+    enableDragDrop: boolean,
+    compactMode: boolean,
+  ): Promise<string> {
+    if (groups.length <= 1) {
+      const groupId = groups[0]?.id;
+      if (groupId !== undefined) {
+        return this.renderTabList(getTabsInGroup(groupId), showPath, copilotReady, enableDragDrop, compactMode);
+      }
+      return '';
+    }
+
+    let html = '';
+    for (const group of groups) {
+      html += this.renderGroupHeader(group);
+      html += await this.renderTabList(getTabsInGroup(group.id), showPath, copilotReady, enableDragDrop, compactMode);
+    }
+    return html;
+  }
 
   private renderGroupHeader(group: SideTabGroup): string {
-    const marker = group.isActive ? ' (Active)' : '';
-    return `<div class="group-header">
-      <span class="codicon codicon-window"></span>
-      <span>${this.esc(group.label)}${marker}</span>
+    const marker = group.isActive ? ' ●' : '';
+    return `<div class="group-header" data-groupid="${group.id}">
+      <span class="codicon codicon-files group-icon"></span>
+      <span class="group-label">${this.esc(group.label)}${marker}</span>
+      <span class="group-actions">
+        <button class="group-btn" data-action="closeGroup" data-groupid="${group.id}" title="Close Group"><span class="codicon codicon-close-all"></span></button>
+        <button class="group-btn" data-action="toggleGroup" data-groupid="${group.id}" title="Collapse/Expand"><span class="codicon codicon-fold-down"></span></button>
+      </span>
     </div>`;
   }
 
   private async renderTabList(
-    tabs          : SideTab[],
-    tabHeight     : number,
-    showPath      : boolean,
-    copilotReady  : boolean,
-    enableDragDrop: boolean = false,
+    tabs: SideTab[],
+    showPath: boolean,
+    copilotReady: boolean,
+    enableDragDrop: boolean,
+    compactMode: boolean,
   ): Promise<string> {
-    // Pinned tabs first, stable order within each section
-    const sorted = [...tabs].sort((a, b) => {
-      if ( a.state.isPinned && !b.state.isPinned) { return -1; }
-      if (!a.state.isPinned &&  b.state.isPinned) { return  1; }
+    // Separate parent tabs (no parentId) from child tabs (have parentId)
+    const parentTabs = tabs.filter(t => !t.metadata.parentId);
+    const childTabs = tabs.filter(t => t.metadata.parentId);
+    
+    // Build a map of parentId -> children
+    const childrenByParent = new Map<string, SideTab[]>();
+    for (const child of childTabs) {
+      const parentId = child.metadata.parentId!;
+      if (!childrenByParent.has(parentId)) {
+        childrenByParent.set(parentId, []);
+      }
+      childrenByParent.get(parentId)!.push(child);
+    }
+    
+    // Sort parent tabs: pinned first
+    const sortedParents = [...parentTabs].sort((a, b) => {
+      if (a.state.isPinned && !b.state.isPinned) { return -1; }
+      if (!a.state.isPinned && b.state.isPinned) { return 1; }
       return 0;
     });
 
-    const rendered = await Promise.all(
-      sorted.map(t => this.renderTab(t, tabHeight, showPath, copilotReady, enableDragDrop))
-    );
+    // Render parents with their children immediately after
+    const rendered: string[] = [];
+    for (const parent of sortedParents) {
+      // Render parent
+      rendered.push(await this.renderTab(parent, showPath, copilotReady, enableDragDrop, compactMode));
+      
+      // Render children (always compact, no path, attached to parent)
+      const children = childrenByParent.get(parent.metadata.id) || [];
+      for (const child of children) {
+        rendered.push(await this.renderChildTab(child, copilotReady, parent.metadata.id));
+      }
+    }
+    
+    // Render orphan child tabs (their parent file tab is not open)
+    // These are shown as regular compact tabs with indication they're diffs
+    for (const child of childTabs) {
+      if (!parentTabs.some(p => p.metadata.id === child.metadata.parentId)) {
+        rendered.push(await this.renderOrphanChildTab(child, showPath, copilotReady, compactMode));
+      }
+    }
+    
     return rendered.join('');
   }
 
-  private async renderTab(
-    tab           : SideTab,
-    _tabHeight    : number,
-    showPath      : boolean,
-    copilotReady  : boolean,
-    _enableDragDrop: boolean = false,
+  /**
+   * Renders a child tab (diff) attached to its parent.
+   * Always compact, indented, no path shown.
+   */
+  private async renderChildTab(
+    tab: SideTab,
+    copilotReady: boolean,
+    parentId: string,
   ): Promise<string> {
-    const activeClass    = tab.state.isActive  ? ' active' : '';
-    const dataPinned     = `data-pinned="${tab.state.isPinned}"`;
-    const dataGroupId    = `data-groupid="${tab.state.groupId}"`;
+    const activeClass = tab.state.isActive ? ' active' : '';
+    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
+    const dataParentId = `data-parentid="${this.esc(parentId)}"`;
     const stateIndicator = getStateIndicator(tab);
-
-    const pinBadge  = tab.state.isPinned
-      ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>'
-      : '';
-
-    const fileActionBtn = this.renderFileActionButton(tab);
 
     const chatBtn = copilotReady && tab.metadata.uri
       ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
       : '';
 
-    const closeBtn = `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`;
-
-    const pathHtml = showPath && tab.metadata.description
-      ? `<div class="tab-path">${this.esc(tab.metadata.description)}</div>`
+    const closeBtn = tab.state.capabilities.canClose
+      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
       : '';
 
-    const iconHtml = await this.getIconHtml(tab);
+    // Use diff icon for child tabs
+    const iconHtml = '<span class="codicon codicon-diff"></span>';
+
+    return `<div class="tab child-tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" data-pinned="false" ${dataGroupId} ${dataParentId}>
+      <span class="tab-icon">${iconHtml}</span>
+      <div class="tab-text">
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}</div>
+      </div>
+      ${stateIndicator.html}
+      <span class="tab-actions">
+        ${chatBtn}${closeBtn}
+      </span>
+    </div>`;
+  }
+
+  /**
+   * Renders an orphan child tab (diff whose parent file is not open).
+   * Shown with full info since there's no parent context.
+   */
+  private async renderOrphanChildTab(
+    tab: SideTab,
+    showPath: boolean,
+    copilotReady: boolean,
+    compactMode: boolean,
+  ): Promise<string> {
+    // Render like a normal tab but with diff icon prefix
+    return this.renderTab(tab, showPath, copilotReady, false, compactMode);
+  }
+
+  private async renderTab(
+    tab: SideTab,
+    showPath: boolean,
+    copilotReady: boolean,
+    _enableDragDrop: boolean,
+    compactMode: boolean,
+  ): Promise<string> {
+    const activeClass = tab.state.isActive ? ' active' : '';
+    const dataPinned = `data-pinned="${tab.state.isPinned}"`;
+    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
+    const stateIndicator = getStateIndicator(tab);
+
+    const pinBadge = tab.state.isPinned
+      ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>'
+      : '';
+
+    const fileActionBtn = tab.state.capabilities.canTogglePreview
+      ? this.renderFileActionButton(tab)
+      : '';
+
+    const chatBtn = copilotReady && tab.metadata.uri
+      ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
+      : '';
+
+    const closeBtn = tab.state.capabilities.canClose
+      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
+      : '';
+
+    const iconHtml = await this.iconRenderer.render(tab);
+
+    // Compact mode: same layout as normal, single-line text (name + inline path)
+    if (compactMode) {
+      const pathSuffix = showPath && tab.metadata.detailLabel
+        ? `<span class="tab-path-inline">${this.esc(tab.metadata.detailLabel)}</span>`
+        : '';
+      return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
+      <span class="tab-icon">${iconHtml}</span>
+      <div class="tab-text">
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${pathSuffix}</div>
+      </div>
+      ${stateIndicator.html}
+      <span class="tab-actions">
+        ${fileActionBtn}${chatBtn}${closeBtn}
+      </span>
+    </div>`;
+    }
+
+    // Normal mode: two-line layout
+    const pathHtml = showPath && tab.metadata.detailLabel
+      ? `<div class="tab-path">${this.esc(tab.metadata.detailLabel)}</div>`
+      : '';
 
     return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
       <span class="tab-icon">${iconHtml}</span>
@@ -151,47 +316,14 @@ export class TabsLoverHtmlBuilder {
     </div>`;
   }
 
-  //= ICONOS
-
-  private async getIconHtml(tab: SideTab): Promise<string> {
-    const { tabType, viewType, label, uri } = tab.metadata;
-
-    if (tabType === 'webview' || tabType === 'unknown') {
-      return `<span class="codicon codicon-${resolveBuiltInCodicon(label, viewType)}"></span>`;
-    }
-
-    const fileName = (tabType === 'diff' && uri)
-      ? uri.path.split('/').pop() || label
-      : label;
-
-    if (!fileName) { return this.getFallbackIcon(); }
-
-    try {
-      const cached = this.iconManager.getCachedIcon(fileName);
-      if (cached) { return `<img src="${cached}" alt="" />`; }
-
-      const base64 = await this.iconManager.getFileIconAsBase64(fileName, this.context);
-      if (base64)  { return `<img src="${base64}" alt="" />`; }
-    } catch (error) {
-      console.warn(`[TabsLover] Icon resolution failed for ${fileName}:`, error);
-    }
-
-    return this.getFallbackIcon();
-  }
-
-  private getFallbackIcon(): string {
-    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M3 1h7l3 3v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1" fill="none"/>
-      <path d="M10 1v3h3" stroke="currentColor" stroke-width="1" fill="none"/>
-    </svg>`;
-  }
-
   //= BOTONES DE ACCIÓN
 
   private renderFileActionButton(tab: SideTab): string {
     if (!this.fileActionRegistry || !tab.metadata.uri) { return ''; }
 
-    const resolved = this.fileActionRegistry.resolve(tab.metadata.label, tab.metadata.uri);
+    // Pass viewMode context for dynamic actions (like MD toggle)
+    const context = { viewMode: tab.state.viewMode };
+    const resolved = this.fileActionRegistry.resolve(tab.metadata.label, tab.metadata.uri, context);
     if (!resolved) { return ''; }
 
     return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;
@@ -199,13 +331,22 @@ export class TabsLoverHtmlBuilder {
 
   //= UTILIDADES
 
-  /** Escapa caracteres especiales para insertar texto de forma segura en HTML. */
   private esc(s: string): string {
     return s
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  private generateNonce(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let nonce = '';
+    for (let i = 0; i < 32; i++) {
+      nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return nonce;
   }
 }
 

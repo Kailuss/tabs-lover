@@ -183,6 +183,24 @@
         "title"    :"Duplicate File",
         "icon"     :"$(files)",
         "category" :"Tabs Lover"
+      },
+      {
+        "command"  :"tabsLover.saveAll",
+        "title"    :"Save All",
+        "icon"     :"$(save-all)",
+        "category" :"Tabs Lover"
+      },
+      {
+        "command"  :"tabsLover.reorder",
+        "title"    :"Reorder Tabs",
+        "icon"     :"$(list-ordered)",
+        "category" :"Tabs Lover"
+      },
+      {
+        "command"  :"tabsLover.toggleCompactMode",
+        "title"    :"Toggle Compact Mode",
+        "icon"     :"$(list-flat)",
+        "category" :"Tabs Lover"
       }
     ],
     "menus": {
@@ -190,17 +208,27 @@
         {
           "command": "tabsLover.refresh",
           "when": "view == tabsLover",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
-          "command": "tabsLover.closeAll",
+          "command": "tabsLover.reorder",
           "when": "view == tabsLover",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "tabsLover.toggleCompactMode",
+          "when": "view == tabsLover",
+          "group": "navigation@3"
+        },
+        {
+          "command": "tabsLover.saveAll",
+          "when": "view == tabsLover",
+          "group": "navigation@4"
         },
         {
           "command": "tabsLover.addMultipleToCopilotChat",
           "when": "view == tabsLover && tabsLover.copilotAvailable",
-          "group": "navigation"
+          "group": "navigation@5"
         }
       ]
     },
@@ -212,10 +240,10 @@
           "default": true,
           "description": "Show the relative file path as description next to each tab."
         },
-        "tabsLover.tabHeight": {
-          "type": "number",
-          "default": 40,
-          "description": "Height of each tab item in pixels."
+        "tabsLover.compactMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable compact mode: tabs show file name and path in a single line with reduced height (26px)."
         },
         "tabsLover.iconSize": {
           "type": "number",

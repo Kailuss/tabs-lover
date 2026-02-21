@@ -35,8 +35,26 @@ export class CopilotService {
   /**
    * Añade un archivo al contexto de Copilot Chat.
    * Si la integración directa no está disponible usa el portapapeles como alternativa.
+   * @param tab - The tab to add (updates integration state)
    */
-  async addFileToChat(uri: vscode.Uri | undefined): Promise<boolean> {
+  async addFileToChat(tab: SideTab): Promise<boolean>;
+  /**
+   * Añade un archivo al contexto de Copilot Chat (legacy signature).
+   * @param uri - The URI to add (no state update)
+   */
+  async addFileToChat(uri: vscode.Uri | undefined): Promise<boolean>;
+  async addFileToChat(tabOrUri: SideTab | vscode.Uri | undefined): Promise<boolean> {
+    // Handle both signatures
+    let uri: vscode.Uri | undefined;
+    let tab: SideTab | undefined;
+    
+    if (tabOrUri instanceof SideTab) {
+      tab = tabOrUri;
+      uri = tab.metadata.uri;
+    } else {
+      uri = tabOrUri;
+    }
+
     if (!uri) {
       return false;
     }
@@ -50,6 +68,12 @@ export class CopilotService {
         isPartialQuery: true,
         attachFiles: [uri],
       } satisfies ChatOpenOptions);
+      
+      // Update integration state if tab was provided
+      if (tab) {
+        tab.addToCopilotContext();
+      }
+      
       return true;
     } catch (error) {
       vscode.window.showWarningMessage(
@@ -62,14 +86,27 @@ export class CopilotService {
   /**
    * Añade varios archivos al contexto de Copilot Chat en una sola acción.
    * All files are attached simultaneously to a single chat session.
+   * Updates integration state for all tabs.
    */
-  async addFilesToChat(uris: vscode.Uri[], query?: string): Promise<boolean> {
-    if (uris.length === 0) {
+  async addFilesToChat(tabs: SideTab[], query?: string): Promise<boolean>;
+  /**
+   * Legacy signature: adds URIs without state update.
+   */
+  async addFilesToChat(uris: vscode.Uri[], query?: string): Promise<boolean>;
+  async addFilesToChat(tabsOrUris: SideTab[] | vscode.Uri[], query?: string): Promise<boolean> {
+    if (tabsOrUris.length === 0) {
       return false;
     }
     if (!this.isAvailable()) {
       return false;
     }
+
+    // Determine if we have tabs or URIs
+    const areTabs = tabsOrUris.length > 0 && tabsOrUris[0] instanceof SideTab;
+    const tabs = areTabs ? (tabsOrUris as SideTab[]) : undefined;
+    const uris = areTabs 
+      ? (tabsOrUris as SideTab[]).map(t => t.metadata.uri).filter((u): u is vscode.Uri => !!u)
+      : (tabsOrUris as vscode.Uri[]);
 
     try {
       await vscode.commands.executeCommand('workbench.action.chat.open', {
@@ -77,6 +114,16 @@ export class CopilotService {
         isPartialQuery: !query,
         attachFiles: uris,
       } satisfies ChatOpenOptions);
+      
+      // Update integration state for all tabs
+      if (tabs) {
+        for (const tab of tabs) {
+          if (tab.metadata.uri) {
+            tab.addToCopilotContext();
+          }
+        }
+      }
+      
       return true;
     } catch (error) {
       vscode.window.showWarningMessage(
@@ -96,8 +143,8 @@ export class CopilotService {
     const selected = await vscode.window.showQuickPick(
       fileTabs.map(tab => ({
         label: tab.metadata.label,
-        description: tab.metadata.description,
-        detail: tab.metadata.tooltip,
+        description: tab.metadata.detailLabel,
+        detail: tab.metadata.tooltipText,
         tab,
       })),
       {
@@ -110,16 +157,14 @@ export class CopilotService {
       return;
     }
 
-    // Collect all URIs and attach them in a single chat.open call
-    const uris = selected
-      .map(item => item.tab.metadata.uri)
-      .filter((uri): uri is vscode.Uri => uri !== undefined);
+    // Pass tabs directly to preserve state tracking
+    const selectedTabs = selected.map(item => item.tab);
 
-    const success = await this.addFilesToChat(uris);
+    const success = await this.addFilesToChat(selectedTabs);
 
     if (success) {
       vscode.window.showInformationMessage(
-        `Added ${uris.length} file(s) to Copilot Chat context`
+        `Added ${selectedTabs.length} file(s) to Copilot Chat context`
       );
     }
   }

@@ -52,7 +52,7 @@ export const STYLE_CONSTANTS = {
 /** Configuration shape for tabsLover settings */
 export type TabsLoverConfiguration = {
   showFilePath       : boolean;
-  tabHeight          : number;
+  compactMode        : boolean;
   iconSize           : number;
   enableHoverActions : boolean;
   showStateIcons     : boolean;
@@ -68,7 +68,7 @@ export function getConfiguration(): TabsLoverConfiguration {
 
   return {
     showFilePath       : config.get('showFilePath'      ,true)                         ,
-    tabHeight          : config.get('tabHeight'         ,STYLE_CONSTANTS.TAB_HEIGHT)   ,
+    compactMode        : config.get('compactMode'       ,false)                        ,
     iconSize           : config.get('iconSize'          ,STYLE_CONSTANTS.TAB_ICON_SIZE),
     enableHoverActions : config.get('enableHoverActions',true)                         ,
     showStateIcons     : config.get('showStateIcons'    ,true)                         ,
