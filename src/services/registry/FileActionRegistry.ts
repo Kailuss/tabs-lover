@@ -72,19 +72,34 @@ export class FileActionRegistry {
     for (const action of this.dynamic) {
       if (action.match(fileName, uri)) {
         const resolved = action.resolve(context);
-        return { id: resolved.actionId, icon: resolved.icon, tooltip: resolved.tooltip };
+        return { 
+          id: resolved.actionId, 
+          icon: resolved.icon, 
+          tooltip: resolved.tooltip,
+          setFocus: action.setFocus ?? false,
+        };
       }
     }
     // Custom static actions
     for (const action of this.custom) {
       if (action.match(fileName, uri)) {
-        return { id: action.id, icon: action.icon, tooltip: action.tooltip };
+        return { 
+          id: action.id, 
+          icon: action.icon, 
+          tooltip: action.tooltip,
+          setFocus: action.setFocus ?? true,
+        };
       }
     }
     // Then built-in static
     for (const action of this.builtin) {
       if (action.match(fileName, uri)) {
-        return { id: action.id, icon: action.icon, tooltip: action.tooltip };
+        return { 
+          id: action.id, 
+          icon: action.icon, 
+          tooltip: action.tooltip,
+          setFocus: action.setFocus ?? false,
+        };
       }
     }
     return null;
@@ -132,5 +147,22 @@ export class FileActionRegistry {
   /** Devuelve todas las acciones registradas (para depuración). */
   getAll(): ReadonlyArray<FileAction> {
     return [...this.custom, ...this.builtin];
+  }
+
+  /**
+   * Devuelve si una acción debe hacer focus o no.
+   * @param actionId - ID de la acción
+   * @returns true si debe hacer focus, false si no (default)
+   */
+  shouldSetFocus(actionId: string): boolean {
+    // Check dynamic actions
+    const dynamicAction = this.dynamic.find(a => a.id === actionId);
+    if (dynamicAction) {
+      return dynamicAction.setFocus ?? false;
+    }
+
+    // Check static actions
+    const action = this.custom.find(a => a.id === actionId) ?? this.builtin.find(a => a.id === actionId);
+    return action?.setFocus ?? false;
   }
 }

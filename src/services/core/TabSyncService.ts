@@ -191,6 +191,7 @@ export class TabSyncService {
    * - Webview tabs (Settings, Extensions, etc.) que no disparan onDidChangeActiveTextEditor.
    * - Preview tabs que pueden convertirse en permanentes sin disparar el evento onChange.
    * - Markdown Previews: cuando están activos, la tab del archivo fuente debe mostrarse activa.
+   * - **Garantiza que solo una tab por grupo esté visualmente activa.**
    * 
    * NOTA: viewMode es una preferencia persistente del usuario por tab.
    * Cada tab recuerda si prefiere verse en modo preview o source.
@@ -238,6 +239,9 @@ export class TabSyncService {
       }
     }
 
+    // Track active tab per group to ensure only one is active
+    const activeTabPerGroup = new Map<number, string>(); // viewColumn -> tabId
+
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
         const id = this.generateIdFromNativeTab(tab);
@@ -254,6 +258,20 @@ export class TabSyncService {
           shouldBeActive = true;
         }
 
+        // Track active tab for this group
+        if (shouldBeActive) {
+          const viewColumn = existing.state.viewColumn;
+          const currentActive = activeTabPerGroup.get(viewColumn);
+          
+          if (currentActive) {
+            // Already have an active tab in this group - deactivate this one
+            console.log(`[TabSync] Multiple active tabs detected in group ${viewColumn}. Deactivating:`, existing.metadata.label);
+            shouldBeActive = false;
+          } else {
+            activeTabPerGroup.set(viewColumn, id);
+          }
+        }
+
         // Sincronizar isActive e isPreview para mantener el estado actualizado
         const activeChanged = existing.state.isActive !== shouldBeActive;
         const previewChanged = existing.state.isPreview !== tab.isPreview;
@@ -262,6 +280,20 @@ export class TabSyncService {
           existing.state.isActive = shouldBeActive;
           existing.state.isPreview = tab.isPreview;
           this.stateService.updateTabSilent(existing);
+        }
+      }
+    }
+
+    // Additional safety: ensure all tabs in the same group as the active tab are deactivated
+    for (const [viewColumn, activeTabId] of activeTabPerGroup) {
+      const allTabsInGroup = this.stateService.getAllTabs()
+        .filter(tab => tab.state.viewColumn === viewColumn);
+      
+      for (const tab of allTabsInGroup) {
+        if (tab.metadata.id !== activeTabId && tab.state.isActive) {
+          console.log(`[TabSync] Force deactivating tab in group ${viewColumn}:`, tab.metadata.label);
+          tab.state.isActive = false;
+          this.stateService.updateTabSilent(tab);
         }
       }
     }
@@ -483,8 +515,13 @@ export class TabSyncService {
       // VISUALIZATION MODE
       viewMode,
       
-      // CAPABILITIES
+      // ACTION CONTEXT (from defaults)
+      actionContext: stateWithDefaults.actionContext!,
+      operationState: stateWithDefaults.operationState!,
+      
+      // CAPABILITIES & PERMISSIONS
       capabilities,
+      permissions: stateWithDefaults.permissions!,
       
       // HIERARCHY
       hasChildren: false, // Will be computed later when children are detected
@@ -509,6 +546,13 @@ export class TabSyncService {
       // PROTECTION
       isTransient: false,
       isProtected: false,
+      
+      // INTEGRATIONS (from defaults)
+      integrations: stateWithDefaults.integrations!,
+      
+      // CUSTOMIZATION (from defaults)
+      customActions: stateWithDefaults.customActions,
+      shortcuts: stateWithDefaults.shortcuts,
     };
 
     return new SideTab(metadata, state);
