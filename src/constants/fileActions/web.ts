@@ -10,6 +10,7 @@ import { byExtension } from './matchers';
  */
 export const MARKDOWN_TOGGLE_ACTION: DynamicFileAction = {
   id: 'toggleMarkdownPreview',
+  setFocus: true, // Hacer focus al cambiar visualización
   match: byExtension('.md', '.mdx', '.markdown'),
   resolve: (context) => {
     const isPreview = context?.viewMode === 'preview';
