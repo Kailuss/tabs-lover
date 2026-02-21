@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
-import type { TabViewMode } from '../../models/SideTab';
+import type { TabViewMode, EditMode } from '../../models/SideTab';
 
 /**
  * Contexto adicional para resolver acciones dinámicamente.
  * Usado para acciones que dependen del estado de la tab (ej: toggle preview).
  */
 export type FileActionContext = {
-  viewMode?: TabViewMode;  // Current view mode: 'source' | 'preview' | 'split'
+  viewMode?: TabViewMode;          // Current view mode: 'source' | 'preview' | 'split'
+  editMode?: EditMode;             // Edit capability state
+  splitOrientation?: 'horizontal' | 'vertical';  // Split view orientation
+  compareMode?: boolean;           // In diff/compare mode
+  debugMode?: boolean;             // In debug mode
 }
 
 /**
@@ -19,6 +23,7 @@ export type FileAction = {
   id: string;      // Identificador único de la acción (se envía como mensaje al webview).
   icon: string;    // Codicon que se muestra en el botón de la tab (sin el prefijo `codicon-`).
   tooltip: string; // Tooltip del botón.
+  setFocus?: boolean; // Si debe hacer focus en la tab al ejecutar (default: false).
 
   /**
    * Función que decide si esta acción aplica a un archivo dado.
@@ -40,6 +45,7 @@ export type FileAction = {
  */
 export type DynamicFileAction = {
   id: string;
+  setFocus?: boolean; // Si debe hacer focus en la tab al ejecutar (default: false).
   /**
    * Función que decide si esta acción aplica a un archivo dado.
    */
@@ -62,4 +68,5 @@ export type ResolvedFileAction = {
   id      : string;
   icon    : string;
   tooltip : string;
+  setFocus?: boolean; // Si debe hacer focus al ejecutar
 }
