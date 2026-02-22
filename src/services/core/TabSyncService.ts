@@ -197,6 +197,7 @@ export class TabSyncService {
     // First, detect if a Markdown Preview is active (we filter these tabs)
     // If so, we need to mark the corresponding source file tab as active
     let activeMarkdownSourceId: string | null = null;
+    let activeMarkdownSourceUri: vscode.Uri | null = null;
     
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
@@ -205,27 +206,46 @@ export class TabSyncService {
           if (tab.input.viewType === 'markdown.preview' || 
               (tab.label.startsWith('Preview ') && (tab.label.endsWith('.md') || tab.label.endsWith('.mdx') || tab.label.endsWith('.markdown')))) {
             
-            // PRIMARY: Use lastMarkdownPreviewTabId - this is the definitive source
-            // because WE control when markdown.showPreview is called
-            const lastPreviewTabId = this.stateService.lastMarkdownPreviewTabId;
-            if (lastPreviewTabId) {
-              const lastTab = this.stateService.getTab(lastPreviewTabId);
-              // Verify it's still in the same group
-              if (lastTab && lastTab.state.groupId === group.viewColumn) {
-                activeMarkdownSourceId = lastPreviewTabId;
+            // Extract the source file name from the preview label
+            const sourceFileName = tab.label.replace('Preview ', '');
+            
+            // Find the actual source tab in the same group by matching the filename
+            for (const sourceTab of group.tabs) {
+              if (sourceTab.input instanceof vscode.TabInputText) {
+                const sourcePath = sourceTab.input.uri.path;
+                if (sourcePath.endsWith('/' + sourceFileName) || 
+                    sourcePath.endsWith('\\' + sourceFileName)) {
+                  // Found the source tab that matches the preview
+                  activeMarkdownSourceUri = sourceTab.input.uri;
+                  activeMarkdownSourceId = `${sourceTab.input.uri.toString()}-${group.viewColumn}`;
+                  
+                  // Update the tracker to reflect the currently previewed document
+                  // This is important when navigating between documents via internal links
+                  if (this.stateService.lastMarkdownPreviewTabId !== activeMarkdownSourceId) {
+                    Logger.log(`[TabSync] Preview navigated to different document: ${sourceFileName}`);
+                    this.stateService.setLastMarkdownPreviewTabId(activeMarkdownSourceId);
+                    
+                    // Also update the tab's viewMode to 'preview' if not already set
+                    const sourceTabInstance = this.stateService.getTab(activeMarkdownSourceId);
+                    if (sourceTabInstance && sourceTabInstance.state.viewMode !== 'preview') {
+                      sourceTabInstance.state.viewMode = 'preview';
+                      Logger.log(`[TabSync] Set viewMode=preview for newly previewed tab: ${sourceFileName}`);
+                    }
+                  }
+                  break;
+                }
               }
             }
             
-            // FALLBACK: If no tracked tab, try to find by filename (less accurate)
+            // FALLBACK: If we couldn't find by filename match, try using the last tracked ID
+            // (but this is less accurate and may be stale)
             if (!activeMarkdownSourceId) {
-              const sourceFileName = tab.label.replace('Preview ', '');
-              for (const sourceTab of group.tabs) {
-                if (sourceTab.input instanceof vscode.TabInputText) {
-                  if (sourceTab.input.uri.path.endsWith('/' + sourceFileName) || 
-                      sourceTab.input.uri.path.endsWith('\\' + sourceFileName)) {
-                    activeMarkdownSourceId = `${sourceTab.input.uri.toString()}-${group.viewColumn}`;
-                    break;
-                  }
+              const lastPreviewTabId = this.stateService.lastMarkdownPreviewTabId;
+              if (lastPreviewTabId) {
+                const lastTab = this.stateService.getTab(lastPreviewTabId);
+                // Verify it's still in the same group
+                if (lastTab && lastTab.state.groupId === group.viewColumn) {
+                  activeMarkdownSourceId = lastPreviewTabId;
                 }
               }
             }
