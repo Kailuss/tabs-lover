@@ -2,7 +2,7 @@
 
 /* Icon area — fixed width to prevent shifts */
 .tab-icon {
-  flex            : 0 0 28px;
+  flex            : 0 0 26px;
   display         : flex;
   align-items     : center;
   justify-content : center;

@@ -16,6 +16,7 @@
 @import './base.css';
 @import './group-header.css';
 @import './tab-layout.css';
+@import './child-tabs.css';
 @import './tab-states.css';
 @import './tab-animations.css';
 @import './tab-content.css';

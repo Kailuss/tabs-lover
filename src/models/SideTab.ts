@@ -9,6 +9,19 @@ export type GitStatus   = 'modified' | 'added' | 'deleted' | 'untracked' | 'igno
 export type TabViewMode = 'source' | 'preview' | 'split';
 //: Edit mode for tabs
 export type EditMode = 'readonly' | 'editable';
+//: Diff type for child tabs (diff visualizations)
+export type DiffType = 'working-tree' | 'staged' | 'snapshot' | 'merge-conflict' | 'incoming' | 'current' | 'incoming-current' | 'unknown';
+
+/**
+ * Diff statistics for child tabs
+ */
+export type DiffStats = {
+  linesAdded?: number;      // Lines added (for working tree, staged)
+  linesRemoved?: number;    // Lines removed (for working tree, staged)
+  timestamp?: number;       // Snapshot timestamp
+  snapshotName?: string;    // Snapshot label/name
+  conflictSections?: number; // Number of conflict sections
+};
 
 /**
  * Contexto de acción dinámico para tabs.
@@ -92,6 +105,7 @@ export type SideTabMetadata = {
   id            : string;        // Unique identifier (uri-based for file tabs, label-based for webview tabs).
   parentId?     : string;        // ID of parent tab (for diff tabs that belong to a file tab).
   tabType       : SideTabType;   // What kind of VS Code tab input this wraps.
+  diffType?     : DiffType;      // Type of diff (for child tabs only)
 
   //: FILE INFORMATION
   uri?          : vscode.Uri;    // File URI. Only present for file / custom / notebook tabs.
@@ -190,6 +204,9 @@ export type SideTabState = {
 
   //: VISUALIZATION MODE
   viewMode           : TabViewMode;  // How the tab is visualized: source | preview | split
+
+  //: DIFF INFORMATION (for child tabs)
+  diffStats?         : DiffStats;    // Diff statistics (lines added/removed, etc.)
 
   //: ACTION CONTEXT (NEW)
   actionContext      : ActionContext;        // Dynamic action context
