@@ -164,24 +164,27 @@ export class TabsLoverHtmlBuilder {
       return 0;
     });
 
-    // Render parents with their children immediately after
+    // Render parents with their children inside a shared .tab-block wrapper.
+    // The wrapper is the D&D unit: height, cloning and positioning operate on it.
     const rendered: string[] = [];
     for (const parent of sortedParents) {
-      // Render parent
-      rendered.push(await this.renderTab(parent, showPath, copilotReady, enableDragDrop, compactMode));
-      
-      // Render children (always compact, no path, attached to parent)
       const children = childrenByParent.get(parent.metadata.id) || [];
+      const blockClass = children.length > 0 ? 'tab-block has-children' : 'tab-block';
+
+      let block = `<div class="${blockClass}" data-tabid="${this.esc(parent.metadata.id)}" data-pinned="${parent.state.isPinned}" data-groupid="${parent.state.groupId}">`;
+      block += await this.renderTab(parent, showPath, copilotReady, enableDragDrop, compactMode);
       for (const child of children) {
-        rendered.push(await this.renderChildTab(child, copilotReady, parent));
+        block += await this.renderChildTab(child, copilotReady, parent);
       }
+      block += `</div>`;
+      rendered.push(block);
     }
-    
-    // Render orphan child tabs (their parent file tab is not open)
-    // These are shown as regular compact tabs with indication they're diffs
+
+    // Orphan child tabs (parent file not open) — wrapped individually as draggable blocks
     for (const child of childTabs) {
       if (!parentTabs.some(p => p.metadata.id === child.metadata.parentId)) {
-        rendered.push(await this.renderOrphanChildTab(child, showPath, copilotReady, compactMode));
+        const orphanHtml = await this.renderOrphanChildTab(child, showPath, copilotReady, compactMode);
+        rendered.push(`<div class="tab-block" data-tabid="${this.esc(child.metadata.id)}" data-pinned="false" data-groupid="${child.state.groupId}">${orphanHtml}</div>`);
       }
     }
     
@@ -197,8 +200,8 @@ export class TabsLoverHtmlBuilder {
     copilotReady: boolean,
     parent: SideTab,
   ): Promise<string> {
+    // data-groupid lives on the parent .tab-block wrapper
     const activeClass = tab.state.isActive ? ' active' : '';
-    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
     const dataParentId = `data-parentid="${this.esc(parent.metadata.id)}"`;
     
     // Determine icon based on diffType and parent state
@@ -206,7 +209,7 @@ export class TabsLoverHtmlBuilder {
     if (tab.metadata.diffType) {
       switch (tab.metadata.diffType) {
         case 'working-tree':
-          iconHtml = '<span class="codicon codicon-worktree"></span>';
+          iconHtml = '<span class="codicon codicon-diff"></span>';
           break;
         case 'staged':
           iconHtml = '<span class="codicon codicon-git-stage"></span>';
@@ -264,7 +267,7 @@ export class TabsLoverHtmlBuilder {
       ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
       : '';
 
-    return `<div class="tab child-tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" data-pinned="false" ${dataGroupId} ${dataParentId}>
+    return `<div class="tab child-tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataParentId}>
       <span class="tab-icon">${iconHtml}</span>
       <div class="child-label">
         <span class="child-name">${this.esc(tab.metadata.label)}</span>
@@ -321,9 +324,8 @@ export class TabsLoverHtmlBuilder {
     _enableDragDrop: boolean,
     compactMode: boolean,
   ): Promise<string> {
+    // data-tabid only — data-pinned and data-groupid live on the parent .tab-block
     const activeClass = tab.state.isActive ? ' active' : '';
-    const dataPinned = `data-pinned="${tab.state.isPinned}"`;
-    const dataGroupId = `data-groupid="${tab.state.groupId}"`;
     const stateIndicator = getStateIndicator(tab);
 
     const pinBadge = tab.state.isPinned
@@ -349,7 +351,7 @@ export class TabsLoverHtmlBuilder {
       const pathSuffix = showPath && tab.metadata.detailLabel
         ? `<span class="tab-path-inline">${this.esc(tab.metadata.detailLabel)}</span>`
         : '';
-      return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
+      return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}">
       <span class="tab-icon">${iconHtml}</span>
       <div class="tab-text">
         <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${pathSuffix}</div>
@@ -366,7 +368,7 @@ export class TabsLoverHtmlBuilder {
       ? `<div class="tab-path">${this.esc(tab.metadata.detailLabel)}</div>`
       : '';
 
-    return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataPinned} ${dataGroupId}>
+    return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}">
       <span class="tab-icon">${iconHtml}</span>
       <div class="tab-text">
         <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}</div>

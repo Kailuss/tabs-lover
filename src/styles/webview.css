@@ -1,5 +1,26 @@
-/* ===== Tabs Lover - Main Stylesheet ===== */
-/* This file imports all modular stylesheets */
+/* ===================================================================
+   TABS LOVER - Main Stylesheet
+   
+   Arquitectura modular de estilos:
+   - base.css          → Reset, variables CSS, estilos globales
+   - group-header.css  → Encabezados de grupos de tabs
+   - tab-layout.css    → Layout base de tabs normales + iconos
+   - child-tabs.css    → Tabs hijas (diffs) + sus iconos y acciones
+   - tab-states.css    → Estados interactivos (active, hover, drag)
+   - tab-animations.css→ Transiciones y animaciones
+   - tab-content.css   → Contenido de texto (labels, paths)
+   - tab-file-states.css→ Estados de archivos (git, dirty, etc.)
+   - tab-actions.css   → Botones de acción de tabs normales
+   - utilities.css     → Clases utilitarias
+   
+   Diferencias clave Normal Tabs vs Child Tabs:
+   - Altura: 39px vs 20px
+   - Iconos: 22px vs 14px (fontSize: 16px vs 13px)
+   - Botones: 20px vs 16px
+   - Padding: 0 8px vs 0 12px 0 32px (indentación)
+   - Hover: Sin fondo vs fondo sutil
+   - Orden: child-tabs.css DESPUÉS de tab-content.css para override
+   ===================================================================== */
 
 /* Note: File icons are provided by VS Code's icon theme API */
 
@@ -13,13 +34,14 @@
   height: 16px;
 }
 
+/* Imports */
 @import './base.css';
 @import './group-header.css';
-@import './tab-layout.css';
-@import './child-tabs.css';
+@import './tab-layout.css';        /* Normal tabs layout + icons */
+@import './tab-content.css';       /* Tab content (text, paths) - ANTES de child-tabs */
+@import './child-tabs.css';        /* Child tabs + icons + actions - DESPUÉS para override */
 @import './tab-states.css';
 @import './tab-animations.css';
-@import './tab-content.css';
 @import './tab-file-states.css';
-@import './tab-actions.css';
+@import './tab-actions.css';       /* Normal tabs actions */
 @import './utilities.css';

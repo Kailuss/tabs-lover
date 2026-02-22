@@ -1,82 +1,120 @@
-/* ===== Child tabs (diffs attached to parent) ===== */
+/* CHILD TABS - Tabs hijas (diffs, comparisons) adjuntas a un parent */
+
+/* ===== .tab-block wrapper =====
+   Contenedor que agrupa una tab padre con sus child tabs.
+   Es la unidad de D&D: el alto total (parent + children) se obtiene
+   de forma natural con getBoundingClientRect() sobre este elemento.
+   No tiene estilos visuales propios — cada hijo gestiona los suyos. */
+.tab-block {
+  position : relative;
+  display  : block;
+}
+
+/* Bloque con hijos: marcador para futuros overrides visuales */
+/* .tab-block.has-children { } */
+
+/*: Base Structure */
 .tab.child-tab {
-  height           : 24px;
-  padding          : 0;
-  padding-left     : 32px;  /* Indentation to show hierarchy */
+  /* Layout */
+  height           : 20px;  /* Más compacto que tabs normales (39px) */
+  padding          : 0 12px 0 32px;  /* Indentación para jerarquía visual */
+  
+  /* Visual hierarchy */
   background       : transparent;
-  border-left      : solid var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
-  border-left-width : 4px;
+  border-left-width: 3px;
+  border-left-style: transparent;
   border-bottom    : 1px solid var(--vscode-editorGroupHeader-tabsBorder, transparent);
-  margin-left      : 0px;
-  margin-right     : 0;
   border-radius    : 0;
+  margin           : 0;
   opacity          : 0.85;
+  
+  /* Positioning */
   position         : relative;
+  display          : flex;
+  align-items      : center;
+  cursor           : pointer;
+  
+  /* Smooth transitions
+  transition       : all 120ms ease; */
 }
 
-/* Tree connector line - visual connection to parent */
-.tab.child-tab::before {
-  content          : '';
-  position         : absolute;
-  left             : -12px;
-  top              : 0;
-  bottom           : 0;
-  width            : 12px;
-  border-left      : 1px solid var(--vscode-editorIndentGuide-background, rgba(128,128,128,0.2));
-  border-bottom    : 1px solid var(--vscode-editorIndentGuide-background, rgba(128,128,128,0.2));
-  border-bottom-left-radius: 4px;
-}
-
+/* Interactive States */
 .tab.child-tab:hover {
-  opacity    : 1;
-  background : var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+  opacity          : 1;
+  background       : var(--vscode-list-hoverBackground, rgba(128,128,128,0.12));
 }
 
 .tab.child-tab.active {
   opacity           : 1;
-  background        : var(--vscode-list-activeSelectionBackground, rgba(90,93,94,0.2));
+  background        : var(--vscode-list-activeSelectionBackground, rgba(90,93,94,0.25));
   border-left-color : var(--vscode-focusBorder, #007acc);
+  font-weight       : 300;
 }
 
-.tab.child-tab .tab-icon {
-  width      : 14px;
-  min-width  : 14px;
-  font-size  : 13px;
-  opacity    : 0.8;
-  margin-right: 6px;
+.tab.child-tab.active:hover {
+  background        : var(--vscode-list-activeSelectionBackground, rgba(90,93,94,0.3));
 }
 
-.tab.child-tab .tab-actions button {
-  width  : 18px;
-  height : 18px;
-}
-
-/* Last child tab gets a small margin-bottom for visual separation */
+/* Visual Separation */
 .tab.child-tab:last-of-type {
-  margin-bottom : 4px;
+  margin-bottom : 6px;  /* Espacio después del último child */
 }
 
-.tab.child-tab:last-of-type::before {
-  bottom: 50%;
+/* Child Tab Icons */
+.tab.child-tab .tab-icon {
+  /* Tamaño reducido para child tabs */
+  flex            : 0 0 auto;
+  width           : 11px;
+  min-width       : 11px;
+  height          : 21px;
+  margin          : 0 6px 0 0;
+  opacity         : 0.75;
+
+  /* Centrado perfecto */
+  display         : flex;
+  align-items     : center;
+  justify-content : center;
+  flex-shrink     : 0;
 }
 
-/* ===== Child tab label and stats ===== */
+/* Específico para iconos codicon en child tabs - Mayor especificidad */
+.tab.child-tab .tab-icon .codicon,
+.tab.child-tab .tab-icon .codicon[class*='codicon-'] {
+  font-size       : 11px !important;  /* Override del font: 10px global */
+}
+
+.tab.child-tab:hover .tab-icon {
+  opacity         : 0.9;
+}
+
+.tab.child-tab.active .tab-icon {
+  opacity         : 1;
+}
+
+/* Iconos de imagen (base64) en child tabs */
+.tab.child-tab .tab-icon img {
+  width           : 14px;
+  height          : 14px;
+  object-fit      : contain;
+}
+
+/* Child Tab Label and Stats */
 .child-label {
   flex        : 1 1 auto;
   min-width   : 0;
   display     : flex;
   align-items : center;
-  gap         : 6px;
+  gap         : 3px;
 }
 
 .child-name {
-  font-size   : 11.5px;
-  font-weight : 500;
-  opacity     : 0.9;
-  flex-shrink : 1;
-  overflow    : hidden;
+  font-size    : 11px;
+  font-weight  : 300;
+  opacity      : 0.9;
+  flex-shrink  : 1;
+  overflow     : hidden;
   text-overflow: ellipsis;
-  white-space : nowrap;
+  white-space  : nowrap;
 }
 
 .tab.child-tab.active .child-name {
@@ -84,7 +122,7 @@
   font-weight : 600;
 }
 
-/* ===== Child tab stats (lines added/removed, timestamp, etc.) ===== */
+/* Child tab stats (lines added/removed, timestamp, etc.) */
 .child-stats {
   display     : flex;
   align-items : center;
@@ -92,6 +130,11 @@
   font-size   : 10px;
   opacity     : 0.7;
   flex-shrink : 0;
+  margin-left : auto;
+}
+
+.child-stats:hover {
+    visibility: collapse;
 }
 
 .stats-added {
@@ -102,11 +145,91 @@
   color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
 }
 
+/* Child Tab Action Buttons */
+.tab.child-tab .tab-actions {
+  display         : none;  /* Ocultos por defecto */
+  align-items     : center;
+  gap             : 2px;   /* Espacio reducido entre botones */
+  margin-left     : auto;  /* Empujar a la derecha */
+}
+
+.tab.child-tab:hover .tab-actions {
+  display         : flex;
+}
+
+.tab.child-tab .tab-actions button {
+  /* Botones más pequeños para child tabs */
+  width           : 16px;
+  height          : 16px;
+  font-size       : 11px;  /* Iconos más pequeños */
+  padding         : 0;
+  
+  /* Estilo */
+  background      : transparent;
+  border          : none;
+  border-radius   : 3px;
+  color           : var(--vscode-icon-foreground, var(--vscode-foreground));
+  opacity         : 0.7;
+  cursor          : pointer;
+  
+  /* Centrado */
+  display         : flex;
+  align-items     : center;
+  justify-content : center;
+  flex-shrink     : 0;
+  
+  /* Transición suave */
+  transition      : all 100ms ease;
+}
+
+.tab.child-tab .tab-actions button:hover {
+  opacity         : 1;
+  background      : var(--vscode-toolbar-hoverBackground, rgba(90,93,94,0.2));
+  transform       : scale(1.05);
+}
+
+.tab.child-tab .tab-actions button:active {
+  transform       : scale(0.95);
+}
+
+/* Iconos de imagen en botones de child tabs */
+.tab.child-tab .tab-actions button img {
+  width           : 12px;
+  height          : 12px;
+  object-fit      : contain;
+}
+
+/* Ocultar stats cuando se muestran las acciones en hover */
+.tab.child-tab:hover .child-stats {
+  display         : none;
+}
+
+/* State Indicators for Child Tabs */
+.tab.child-tab .state-indicator-error,
+.tab.child-tab .state-indicator-warning,
+.tab.child-tab .state-indicator-conflict {
+  font-size       : 12px;  /* Indicadores más pequeños */
+  margin-right    : 4px;
+  flex-shrink     : 0;
+}
+
+.tab.child-tab .state-indicator-error {
+  color           : var(--vscode-editorError-foreground, #f48771);
+}
+
+.tab.child-tab .state-indicator-warning {
+  color           : var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.tab.child-tab .state-indicator-conflict {
+  color           : var(--vscode-gitDecoration-conflictingResourceForeground, #e51400);
+}
+
 .child-stats.conflict {
   color: var(--vscode-gitDecoration-conflictingResourceForeground, #e51400);
 }
 
-/* ===== State indicator for child tabs (errors/warnings inherited from parent) ===== */
+/* State indicator for child tabs (errors/warnings inherited from parent) */
 .child-tab .state-indicator-error {
   color: var(--vscode-errorForeground, #f48771);
   font-size: 12px;

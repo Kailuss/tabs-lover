@@ -1,17 +1,28 @@
-/* Tab row */
+/* ===================================================================
+   NORMAL TABS - Layout principal de tabs (no child tabs)
+   =================================================================== */
+
+/* Tab Base Layout */
 .tab {
+  /* Layout */
   display       : flex;
   align-items   : center;
   height        : 39px;
   padding       : 0 8px 0 0;
-  cursor        : pointer;
-  position      : relative;
+
+  /* Visual */
+  background    : var(--vscode-tab-inactiveBackground, transparent);
+  color         : var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
   border-left-width   : 5px;
   border-left-style   : solid;
   border-left-color   : transparent;
   border-bottom : 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border, rgba(128,128,128,0.35)));
-  background    : var(--vscode-tab-inactiveBackground, transparent);
-  color         : var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+
+  /* Interaction */
+  cursor        : pointer;
+  position      : relative;
+
+  /* Animations */
   transition    : transform 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease;
 }
 
@@ -19,6 +30,45 @@
 .tab.compact {
   height : 29px;
 }
+
+/* Normal Tab Icons */
+.tab:not(.child-tab) .tab-icon {
+  /* Dimensiones estándar para tabs normales */
+  flex            : 0 0 auto;
+  width           : 22px;
+  min-width       : 22px;
+  height          : 22px;
+  margin          : 0 8px 0 0;
+  
+  /* Centrado */
+  display         : flex;
+  align-items     : center;
+  justify-content : center;
+  flex-shrink     : 0;
+  
+  /* Visual */
+  opacity         : 0.9;
+  transition      : opacity 120ms ease;
+}
+
+/* Específico para iconos codicon en tabs normales - Mayor especificidad */
+.tab:not(.child-tab) .tab-icon .codicon,
+.tab:not(.child-tab) .tab-icon .codicon[class*='codicon-'] {
+  font-size       : 16px !important;  /* Override del font: 10px global */
+}
+
+.tab:not(.child-tab):hover .tab-icon {
+  opacity         : 1;
+}
+
+/* Iconos de imagen (base64) en tabs normales */
+.tab:not(.child-tab) .tab-icon img {
+  width           : 18px;
+  height          : 18px;
+  object-fit      : contain;
+}
+
+/* Text Layout */
 
 /* Inline path in compact mode (inside .tab-name) */
 .tab-path-inline {
