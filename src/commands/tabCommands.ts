@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TabStateService } from '../services/core/TabStateService';
+import { VSCODE_COMMANDS } from '../constants/commands';
 
 /**
  * Registra los comandos relacionados con pestañas (abrir, cerrar, mover, etc.).
@@ -36,7 +37,7 @@ export function registerTabCommands(
     }),
 
     vscode.commands.registerCommand('tabsLover.closeAll', async () => {
-      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.commands.executeCommand(VSCODE_COMMANDS.CLOSE_ALL_EDITORS);
     }),
 
     vscode.commands.registerCommand('tabsLover.saveAll', async () => {

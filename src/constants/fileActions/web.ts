@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { VSCODE_COMMANDS } from '../commands';
 import type { FileAction, DynamicFileAction } from './types';
 import { byExtension } from './matchers';
 
@@ -33,10 +34,10 @@ export const MARKDOWN_TOGGLE_ACTION: DynamicFileAction = {
     
     if (isPreview) {
       // Already in preview mode, switch back to source
-      await vscode.commands.executeCommand('vscode.open', uri);
+      await vscode.commands.executeCommand(VSCODE_COMMANDS.VSCODE_OPEN, uri);
     } else {
       // In source mode, open preview
-      await vscode.commands.executeCommand('markdown.showPreview', uri);
+      await vscode.commands.executeCommand(VSCODE_COMMANDS.MARKDOWN_SHOW_PREVIEW, uri);
     }
   },
 };

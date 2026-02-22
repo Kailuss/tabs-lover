@@ -6,6 +6,7 @@ import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../../model
 import { SideTabHelpers }                                      from '../../models/SideTabHelpers';
 import { createTabGroup }                                      from '../../models/SideTabGroup';
 import { formatFilePath }                                      from '../../utils/helpers';
+import { Logger }                                              from '../../utils/logger';
 
 /**
  * Mantiene el estado interno de pestañas sincronizado con VS Code.
@@ -66,7 +67,7 @@ export class TabSyncService {
       const st = this.convertToSideTab(tab);
       if (st) {
         if (st.state.isPreview) {
-          console.log('[TabSync] Opened preview tab:', st.metadata.label);
+          Logger.log('[TabSync] Opened preview tab: ' + st.metadata.label);
         }
         this.stateService.addTab(st);
       }
@@ -97,7 +98,7 @@ export class TabSyncService {
 
       // Log cuando una preview tab se convierte en permanente
       if (existing.state.isPreview && !tab.isPreview) {
-        console.log('[TabSync] Preview tab became permanent:', existing.metadata.label);
+        Logger.log('[TabSync] Preview tab became permanent: ' + existing.metadata.label);
       }
 
       existing.state.isActive  = tab.isActive;
@@ -112,10 +113,7 @@ export class TabSyncService {
         existing.state.gitStatus = this.gitSyncService.getGitStatus(existing.metadata.uri);
         existing.state.diagnosticSeverity = this.getDiagnosticSeverity(existing.metadata.uri);
         if (oldGitStatus !== existing.state.gitStatus || oldDiagnostics !== existing.state.diagnosticSeverity) {
-          console.log('[TabSync] handleTabChanges - updated git/diagnostics:', existing.metadata.label, {
-            gitStatus: { old: oldGitStatus, new: existing.state.gitStatus },
-            diagnostics: { old: oldDiagnostics, new: existing.state.diagnosticSeverity }
-          });
+          Logger.log(`[TabSync] handleTabChanges - updated git/diagnostics: ${existing.metadata.label}, gitStatus: ${oldGitStatus} -> ${existing.state.gitStatus}, diagnostics: ${oldDiagnostics} -> ${existing.state.diagnosticSeverity}`);
         }
       }
 
@@ -171,14 +169,11 @@ export class TabSyncService {
     const newDiagnosticSeverity = this.getDiagnosticSeverity(uri);
     const newGitStatus = this.gitSyncService.getGitStatus(uri);
 
-    console.log('[TabSync] updateTabDiagnostics -', tab.metadata.label, ':', {
-      diagnostics: { old: tab.state.diagnosticSeverity, new: newDiagnosticSeverity },
-      gitStatus: { old: tab.state.gitStatus, new: newGitStatus }
-    });
+    Logger.log(`[TabSync] updateTabDiagnostics - ${tab.metadata.label}: diagnostics: ${tab.state.diagnosticSeverity} -> ${newDiagnosticSeverity}, gitStatus: ${tab.state.gitStatus} -> ${newGitStatus}`);
 
     if (tab.state.diagnosticSeverity !== newDiagnosticSeverity || 
         tab.state.gitStatus !== newGitStatus) {
-      console.log('[TabSync] ✅ Updating tab state with animation for:', tab.metadata.label);
+      Logger.log('[TabSync] ✅ Updating tab state with animation for: ' + tab.metadata.label);
       tab.state.diagnosticSeverity = newDiagnosticSeverity;
       tab.state.gitStatus = newGitStatus;
       this.stateService.updateTabStateWithAnimation(tab);
@@ -265,7 +260,7 @@ export class TabSyncService {
           
           if (currentActive) {
             // Already have an active tab in this group - deactivate this one
-            console.log(`[TabSync] Multiple active tabs detected in group ${viewColumn}. Deactivating:`, existing.metadata.label);
+            Logger.log(`[TabSync] Multiple active tabs detected in group ${viewColumn}. Deactivating: ${existing.metadata.label}`);
             shouldBeActive = false;
           } else {
             activeTabPerGroup.set(viewColumn, id);
@@ -291,7 +286,7 @@ export class TabSyncService {
       
       for (const tab of allTabsInGroup) {
         if (tab.metadata.id !== activeTabId && tab.state.isActive) {
-          console.log(`[TabSync] Force deactivating tab in group ${viewColumn}:`, tab.metadata.label);
+          Logger.log(`[TabSync] Force deactivating tab in group ${viewColumn}: ${tab.metadata.label}`);
           tab.state.isActive = false;
           this.stateService.updateTabSilent(tab);
         }
@@ -319,8 +314,7 @@ export class TabSyncService {
 
     for (const tab of this.stateService.getAllTabs()) {
       if (!nativeIds.has(tab.metadata.id)) {
-        console.log('[TabSync] Removing orphaned tab:', tab.metadata.label, 
-                    '(wasPreview:', tab.state.isPreview, ')');
+        Logger.log(`[TabSync] Removing orphaned tab: ${tab.metadata.label} (wasPreview: ${tab.state.isPreview})`);
         this.stateService.removeTab(tab.metadata.id);
       }
     }
@@ -412,7 +406,7 @@ export class TabSyncService {
       // FILTER OUT Markdown Previews - they are handled as a toggle state on the source file tab
       if (tab.input.viewType === 'markdown.preview' || 
           tab.label.startsWith('Preview ') && tab.label.endsWith('.md')) {
-        console.log('[TabSync] Filtering out Markdown Preview tab (handled as toggle):', tab.label);
+        Logger.log('[TabSync] Filtering out Markdown Preview tab (handled as toggle): ' + tab.label);
         return null;
       }
       uri         = undefined;

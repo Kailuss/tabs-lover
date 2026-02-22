@@ -77,7 +77,7 @@ function beginDrag() {
   isDragging = true;
   document.body.classList.add('drag-active');
 
-  // Detectar altura real de la tab (compacto: 26px, normal: 42px) + 1px de border
+  // Detectar altura real de la tab (compacto: 28px, normal: 42px) + 1px de border
   const rect = sourceEl.getBoundingClientRect();
   TAB_H = Math.round(rect.height) + 1;
 

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Logger }  from '../../utils/logger';
 import { 
   FileAction, 
   DynamicFileAction,
@@ -122,7 +123,7 @@ export class FileActionRegistry {
           await action.execute(uri, context);
           return true;
         } catch (error) {
-          console.error(`[FileAction] Failed to execute dynamic "${actionId}":`, error);
+          Logger.error(`[FileAction] Failed to execute dynamic "${actionId}":`, error);
           return false;
         }
       }
@@ -139,7 +140,7 @@ export class FileActionRegistry {
       await action.execute(uri);
       return true;
     } catch (error) {
-      console.error(`[FileAction] Failed to execute "${actionId}":`, error);
+      Logger.error(`[FileAction] Failed to execute "${actionId}":`, error);
       return false;
     }
   }

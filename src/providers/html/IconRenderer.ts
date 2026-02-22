@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { TabIconManager } from '../../services/ui/TabIconManager';
 import { SideTab } from '../../models/SideTab';
 import { resolveBuiltInCodicon } from '../../utils/builtinIcons';
+import { Logger } from '../../utils/logger';
 import {
   IconData,
   // VSCODE_FILE_EXTENSIONS,  // Comentado: ya no se usan iconos especiales de VS Code
@@ -105,7 +106,7 @@ export class IconRenderer {
         return this.parseIconString(iconData);
       }
     } catch (error) {
-      console.warn(`[TabsLover] Icon resolution failed for ${fileName}:`, error);
+      Logger.error(`[TabsLover] Icon resolution failed for ${fileName}`, error);
     }
 
     return null;

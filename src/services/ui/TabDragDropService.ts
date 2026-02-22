@@ -1,5 +1,6 @@
 import { TabStateService } from '../core/TabStateService';
 import { SideTab }         from '../../models/SideTab';
+import { Logger }          from '../../utils/logger';
 
 /**
  * Servicio dedicado a la gestión de drag & drop de pestañas.
@@ -120,7 +121,7 @@ export class TabDragDropService {
       await sourceTab.moveToGroup(targetGroupId);
       return true;
     } catch (error) {
-      console.error('[TabDragDrop] Failed to move tab between groups:', error);
+      Logger.error('[TabDragDrop] Failed to move tab between groups:', error);
       return false;
     }
   }

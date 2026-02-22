@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
 import type { SideTabMetadata, SideTabState } from '../SideTab';
 import { SideTabHelpers } from '../SideTabHelpers';
+import { Logger } from '../../utils/logger';
+import { VSCODE_COMMANDS } from '../../constants/commands';
+import { TIMINGS } from '../../constants/timings';
 
 /**
  * Activation actions - Activar y hacer focus en tabs
  */
 
 const MARKDOWN_EXTENSIONS = ['.md', '.mdx', '.markdown'];
-const ACTIVATION_RETRY_DELAY_MS = 50;
 
 export async function activate(metadata: SideTabMetadata, state: SideTabState): Promise<void> {
   return activateWithRetry(metadata, state, 0);
@@ -27,8 +29,8 @@ async function activateWithRetry(
       metadata.uri &&
       MARKDOWN_EXTENSIONS.some((ext) => metadata.fileExtension.toLowerCase() === ext)
     ) {
-      console.log('[TabAction] Activating in viewMode=preview:', metadata.label);
-      await vscode.commands.executeCommand('markdown.showPreview', metadata.uri);
+      Logger.log('[TabAction] Activating in viewMode=preview: ' + metadata.label);
+      await vscode.commands.executeCommand(VSCODE_COMMANDS.MARKDOWN_SHOW_PREVIEW, metadata.uri);
       return;
     }
 
@@ -36,14 +38,7 @@ async function activateWithRetry(
     const nativeTab = SideTabHelpers.findNativeTab(metadata, state);
 
     if (attempt === 0) {
-      console.log('[TabAction] Activating tab:', metadata.label, {
-        isPreview: state.isPreview,
-        viewMode: state.viewMode,
-        tabType: metadata.tabType,
-        nativeTabFound: !!nativeTab,
-        nativeIsPreview: nativeTab?.isPreview,
-        uri: metadata.uri?.toString(),
-      });
+      Logger.log(`[TabAction] Activating tab: ${metadata.label}, isPreview: ${state.isPreview}, viewMode: ${state.viewMode}, tabType: ${metadata.tabType}, nativeTabFound: ${!!nativeTab}, uri: ${metadata.uri?.toString()}`);
     }
 
     // Si la tab no existe después del primer intento completo, está cerrada
@@ -72,11 +67,11 @@ async function activateWithRetry(
         nativeTab.input instanceof vscode.TabInputText &&
         nativeTab.input.uri.toString() === metadata.uri.toString()
       ) {
-        console.log('[TabAction] Using native activation by index for:', metadata.label);
+        Logger.log('[TabAction] Using native activation by index for: ' + metadata.label);
         return await SideTabHelpers.activateByNativeTab(metadata, state);
       }
       // Si el URI no coincide, la tab fue reemplazada - continuar al fallback
-      console.log('[TabAction] URI mismatch, tab was replaced:', metadata.label);
+      Logger.log('[TabAction] URI mismatch, tab was replaced: ' + metadata.label);
     }
 
     // La tab no existe o fue reemplazada - abrirla de nuevo
@@ -84,20 +79,15 @@ async function activateWithRetry(
     if (nativeTab) {
       const tabIndex = nativeTab.group.tabs.indexOf(nativeTab);
       if (tabIndex !== -1) {
-        console.log(
-          '[TabAction] Activating by index (fallback):',
-          metadata.label,
-          'index:',
-          tabIndex
-        );
+        Logger.log(`[TabAction] Activating by index (fallback): ${metadata.label}, index: ${tabIndex}`);
         await SideTabHelpers.focusGroup(state.viewColumn);
-        await vscode.commands.executeCommand('workbench.action.openEditorAtIndex', tabIndex);
+        await vscode.commands.executeCommand(VSCODE_COMMANDS.OPEN_EDITOR_AT_INDEX, tabIndex);
         return;
       }
     }
 
     // Fallback: abrir con showTextDocument
-    console.log('[TabAction] Opening with showTextDocument (final fallback):', metadata.label);
+    Logger.log('[TabAction] Opening with showTextDocument (final fallback): ' + metadata.label);
     const doc = await vscode.workspace.openTextDocument(metadata.uri);
     await vscode.window.showTextDocument(doc, {
       viewColumn: state.viewColumn,
@@ -107,26 +97,22 @@ async function activateWithRetry(
   } catch (err) {
     // Si falla y es un intento temprano, esperar un poco y reintentar
     // (útil para race conditions con preview tabs)
-    if (attempt < maxAttempts) {
-      console.log(
-        `[TabAction] Activation failed (attempt ${attempt + 1}/${maxAttempts + 1}), retrying...`,
-        metadata.label,
-        err
-      );
-      await new Promise((resolve) => setTimeout(resolve, ACTIVATION_RETRY_DELAY_MS));
+    if (attempt < TIMINGS.ACTIVATION_MAX_RETRIES) {
+      Logger.log(`[TabAction] Activation failed (attempt ${attempt + 1}/${TIMINGS.ACTIVATION_MAX_RETRIES + 1}), retrying: ${metadata.label}`);
+      await new Promise((resolve) => setTimeout(resolve, TIMINGS.ACTIVATION_RETRY_DELAY));
       return activateWithRetry(metadata, state, attempt + 1);
     }
 
     // Último intento: usar vscode.open como fallback
     if (metadata.uri) {
       try {
-        console.log('[TabAction] Using vscode.open as last resort:', metadata.label);
-        await vscode.commands.executeCommand('vscode.open', metadata.uri, {
+        Logger.log('[TabAction] Using vscode.open as last resort: ' + metadata.label);
+        await vscode.commands.executeCommand(VSCODE_COMMANDS.VSCODE_OPEN, metadata.uri, {
           viewColumn: state.viewColumn,
           preview: false,
         });
       } catch (finalErr) {
-        console.error('[TabAction] Final activation attempt failed:', metadata.label, finalErr);
+        Logger.error('[TabAction] Final activation attempt failed: ' + metadata.label, finalErr);
         throw finalErr;
       }
     }

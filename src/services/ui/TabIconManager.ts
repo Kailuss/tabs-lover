@@ -3,6 +3,7 @@
 
 import * as vscode from 'vscode';
 import * as fsp    from 'fs/promises';
+import { Logger }  from '../../utils/logger';
 import * as path   from 'path';
 
 /**
@@ -33,7 +34,7 @@ export class TabIconManager {
   public initialize(context: vscode.ExtensionContext): Promise<void> { 
     this._configListener = vscode.workspace.onDidChangeConfiguration(async e => {
       if (e.affectsConfiguration('workbench.iconTheme')) {
-        console.log('[TabsLover] Icon theme changed, rebuilding map...');
+        Logger.log('[TabsLover] Icon theme changed, rebuilding map...');
         this.clearCache();
         await this.buildIconMap(context, true);
         this._onDidInitialize.fire();
@@ -45,15 +46,11 @@ export class TabIconManager {
 
     this._initPromise = this.buildIconMap(context)
       .then(() => {
-        console.log('[TabsLover] Icon map initialized:', {
-          themeId: this._iconThemeId,
-          hasMap: !!this._iconMap,
-          mapSize: this._iconMap ? Object.keys(this._iconMap).length : 0
-        });
+        Logger.log(`[TabsLover] Icon map initialized: themeId=${this._iconThemeId}, mapSize=${this._iconMap ? Object.keys(this._iconMap).length : 0}`);
         this._onDidInitialize.fire();
       })
       .catch(err => {
-        console.error('[TabsLover] Error building initial icon map:', err);
+        Logger.error('[TabsLover] Error building initial icon map:', err);
       });
     
     return this._initPromise;
@@ -90,7 +87,7 @@ export class TabIconManager {
 
       // Si el tema no cambió y ya tenemos el mapa, no volver a reconstruir.
       if (this._iconThemeId === iconTheme && this._iconMap && !forceRebuild) {
-        console.log('[TabsLover] Icon map already exists for theme:', iconTheme);
+        Logger.log('[TabsLover] Icon map already exists for theme: ' + iconTheme);
         return;
       }
 
@@ -101,24 +98,24 @@ export class TabIconManager {
 
       // Fallback a 'vs-seti' si no encontramos el tema configurado
       if (!ext) {
-        console.log('[TabsLover] Theme not found, trying vs-seti fallback:', iconTheme);
+        Logger.log('[TabsLover] Theme not found, trying vs-seti fallback: ' + iconTheme);
         ext = this.findIconThemeExtension('vs-seti');
         themeId = 'vs-seti';
 
         if (!ext) {
-          console.warn('[TabsLover] No icon theme found (not even vs-seti)');
+          Logger.warn('[TabsLover] No icon theme found (not even vs-seti)');
           this._iconMap     = {};
           this._iconThemeId = iconTheme;
           return;
         }
       }
 
-      console.log('[TabsLover] Building icon map for theme:', themeId, 'from extension:', ext.id);
+      Logger.log(`[TabsLover] Building icon map for theme: ${themeId}, from extension: ${ext.id}`);
 
       // Buscar la entrada del tema en el package.json de la extensión
       const themeContribution = ext.packageJSON.contributes.iconThemes.find( (t: any) => t.id === themeId );
       if (!themeContribution) {
-        console.warn('[TabsLover] Theme contribution not found in extension');
+        Logger.warn('[TabsLover] Theme contribution not found in extension');
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -126,12 +123,12 @@ export class TabIconManager {
 
       // Resolver la ruta absoluta al archivo JSON del tema
       themePath = path.join(ext.extensionPath, themeContribution.path);
-      console.log('[TabsLover] Theme path:', themePath);
+      Logger.log('[TabsLover] Theme path: ' + themePath);
 
       try {
         await fsp.access(themePath);
       } catch {
-        console.warn('[TabsLover] Theme file not accessible:', themePath);
+        Logger.warn('[TabsLover] Theme file not accessible: ' + themePath);
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -141,7 +138,7 @@ export class TabIconManager {
         const themeContent = await fsp.readFile(themePath, 'utf8');
         themeJson          = JSON.parse(themeContent);
       } catch (err) {
-        console.error('[TabsLover] Error parsing icon theme JSON:', err);
+        Logger.error('[TabsLover] Error parsing icon theme JSON:', err);
         this._iconMap     = {};
         this._iconThemeId = iconTheme;
         return;
@@ -179,13 +176,13 @@ export class TabIconManager {
       specialFiles.forEach(file => {
         const key = `name:${file}`;
         if (iconMap[key]) {
-          console.log(`[TabsLover] Special file mapped: ${file} → ${iconMap[key]}`);
+          Logger.log(`[TabsLover] Special file mapped: ${file} → ${iconMap[key]}`);
         }
       });
 
       this._iconMap = iconMap;
     } catch (error) {
-      console.error('[TabsLover] Error building icon map:', error);
+      Logger.error('[TabsLover] Error building icon map:', error);
       this._iconMap = this._iconMap || {};
     }
   }
@@ -377,7 +374,7 @@ export class TabIconManager {
       if (result) { this._iconCache.set(cacheKey, result); }
       return result;
     } catch (e) {
-      console.error(`[TabsLover] Error getting icon for ${fileName}:`, e);
+      Logger.error(`[TabsLover] Error getting icon for ${fileName}:`, e);
       return undefined;
     }
   }
@@ -467,7 +464,7 @@ export class TabIconManager {
                 }
               }
             } catch (error) {
-              console.error(`[TabsLover] Error preloading icon for ${fileName}:`, error);
+              Logger.error(`[TabsLover] Error preloading icon for ${fileName}:`, error);
             }
           };
 
@@ -510,7 +507,7 @@ export class TabIconManager {
       const mimeType   = isSvg ? 'image/svg+xml' : 'image/png';
       return `data:${mimeType};base64,${base64Data}`;
     } catch (e) {
-      console.error(`[TabsLover] Error reading icon from ${iconPath}:`, e);
+      Logger.error(`[TabsLover] Error reading icon from ${iconPath}:`, e);
       return undefined;
     }
   }

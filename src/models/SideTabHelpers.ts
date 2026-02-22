@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { Logger } from '../utils/logger';
+import { VSCODE_COMMANDS } from '../constants/commands';
 import type { SideTabMetadata, SideTabState, SideTabCapabilities, TabViewMode, SideTabType } from './SideTab';
 
 /**
@@ -85,17 +87,17 @@ export class SideTabHelpers {
       const tabIndex = nativeTab.group.tabs.indexOf(nativeTab);
       if (tabIndex !== -1) {
         try {
-          console.log('[TabHelper] Activating by index:', metadata.label, 'index:', tabIndex, 'isPreview:', nativeTab.isPreview);
+          Logger.log(`[TabHelper] Activating by index: ${metadata.label}, index: ${tabIndex}, isPreview: ${nativeTab.isPreview}`);
           await SideTabHelpers.focusGroup(state.viewColumn);
-          await vscode.commands.executeCommand('workbench.action.openEditorAtIndex', tabIndex);
+          await vscode.commands.executeCommand(VSCODE_COMMANDS.OPEN_EDITOR_AT_INDEX, tabIndex);
           return;
         } catch (err) {
-          console.error('[TabHelper] Failed to activate by index:', metadata.label, err);
+          Logger.error('[TabHelper] Failed to activate by index: ' + metadata.label, err);
           /* fall through */
         }
       }
     } else {
-      console.warn('[TabHelper] Native tab not found for activation:', metadata.label);
+      Logger.warn('[TabHelper] Native tab not found for activation: ' + metadata.label);
       // Tab doesn't exist anymore - throw error so caller can handle it
       throw new Error(`Native tab not found: ${metadata.label}`);
     }

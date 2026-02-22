@@ -8,6 +8,8 @@ import { SideTab }                  from '../models/SideTab';
 import type { TabViewMode }         from '../models/SideTab';
 import { getConfiguration }         from '../constants/styles';
 import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
+import { Logger }                   from '../utils/logger';
+import { TIMINGS }                  from '../constants/timings';
 import { TabContextMenu }           from './TabContextMenu';
 
 /**
@@ -77,7 +79,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
    * Pequeño debounce para evitar repintados repetidos cuando cambian muchos eventos.
    */
   refresh(): void {
-    console.log('[TabsLover] refresh() called, view exists:', !!this._view);
+    Logger.log('[TabsLover] refresh() called, view exists: ' + !!this._view);
     if (!this._view) { return; }
     this._fullRefreshPending = true;
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); }
@@ -90,7 +92,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       const groups       = this.stateService.getGroups();
       const copilotReady = this.copilotService.isAvailable();
       
-      console.log('[TabsLover] Building HTML, groups:', groups.length);
+      Logger.log('[TabsLover] Building HTML, groups: ' + groups.length);
 
       this._view.webview.html = await this.htmlBuilder.buildHtml({
         webview        : this._view.webview,
@@ -106,8 +108,8 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       // Also update the native VS Code panel title
       this._view.title = this.getWorkspaceName();
       
-      console.log('[TabsLover] HTML assigned to webview');
-    }, 30);
+      Logger.log('[TabsLover] HTML assigned to webview');
+    }, TIMINGS.WEBVIEW_REFRESH_DEBOUNCE);
   }
 
   /**
@@ -162,14 +164,12 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         if (this.syncService?.syncActiveState) {
           this.syncService.syncActiveState();
           // Pequeño retardo para dar tiempo a que VS Code propague el estado de pestañas sincronizado.
-          // 5 ms se ha elegido como valor mínimo que evita condiciones de carrera observadas sin impactar el rendimiento.
-          const SYNC_PROPAGATION_DELAY_MS = 5;
-          await new Promise(resolve => setTimeout(resolve, SYNC_PROPAGATION_DELAY_MS));
+          await new Promise(resolve => setTimeout(resolve, TIMINGS.SYNC_PROPAGATION_DELAY));
         }
         
         const tab = this.findTab(msg.tabId);
         if (!tab) {
-          console.warn('[TabsLover] Tab not found for activation (likely closed):', msg.tabId);
+          Logger.warn('[TabsLover] Tab not found for activation (likely closed): ' + msg.tabId);
           // La tab ya no existe - hacer refresh inmediato para limpiar
           this.refresh();
           return;
@@ -184,14 +184,14 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
           await tab.activate();
         } catch (err: unknown) {
           const errorMsg = err instanceof Error ? err.message : String(err);
-          console.error('[TabsLover] Failed to activate tab:', tab.metadata.label, errorMsg);
+          Logger.error('[TabsLover] Failed to activate tab: ' + tab.metadata.label, err);
           
           // Si el error indica que la tab no existe o no corresponde al documento activo,
           // hacer refresh para limpiar
           if (errorMsg.includes('not found') || 
               errorMsg.includes('no longer exists') ||
               errorMsg.includes('does not correspond')) {
-            console.log('[TabsLover] Tab was closed/removed or mismatch, refreshing to sync state');
+            Logger.log('[TabsLover] Tab was closed/removed or mismatch, refreshing to sync state');
             this.refresh();
           }
         }
@@ -251,8 +251,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
             // Each tab remembers its own preference (preview vs source)
             const newViewMode: TabViewMode = tab.state.viewMode === 'preview' ? 'source' : 'preview';
             tab.state.viewMode = newViewMode;
-            this.stateService.updateTab(tab);
-            console.log('[WebviewProvider] Toggled viewMode for:', tab.metadata.label, '→', tab.state.viewMode);
+            Logger.log(`[WebviewProvider] Toggled viewMode for: ${tab.metadata.label} → ${tab.state.viewMode}`);
             
             // Track which tab last activated the preview (for unique identification)
             if (msg.actionId === 'openMarkdownPreview') {
@@ -263,24 +262,23 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
                 this.stateService.setLastMarkdownPreviewTabId(null);
               }
             }
-            
-            // If the tab is not active, activate it (the action will show preview or source)
-            if (!tab.state.isActive) {
-              tab.state.isActive = true;
-              this.stateService.updateTabSilent(tab);
-            }
           }
           
           // Pass context for dynamic action execution
           const context = { viewMode: tab.state.viewMode };
           const shouldFocus = this.fileActionRegistry.shouldSetFocus(msg.actionId);
           
-          // Execute the action
+          // Execute the action (this changes the view)
           await this.fileActionRegistry.execute(msg.actionId, tab.metadata.uri, context);
           
-          // Set focus if requested (default behavior)
-          if (shouldFocus && !tab.state.isActive) {
+          // For Markdown toggle, always activate the tab to reflect the view change immediately
+          if (isMarkdownToggle || (shouldFocus && !tab.state.isActive)) {
             await tab.activate();
+          }
+          
+          // Update state after activation to reflect changes
+          if (isMarkdownToggle) {
+            this.stateService.updateTab(tab);
           }
         }
         break;

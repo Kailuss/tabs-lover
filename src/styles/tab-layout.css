@@ -15,7 +15,7 @@
 
 /* ===== Compact mode — same layout, reduced height ===== */
 .tab.compact {
-  height : 26px;
+  height : 28px;
 }
 
 /* ===== Child tabs (diffs attached to parent) ===== */

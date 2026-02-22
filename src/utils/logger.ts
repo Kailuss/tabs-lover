@@ -18,6 +18,11 @@ export class Logger {
     this.outputChannel.appendLine(`[${timestamp}] ${message}`);
   }
 
+  /** Registra una advertencia. */
+  static warn(message: string): void {
+    this.log(`WARN: ${message}`);
+  }
+
   /** Registra un error; si hay objeto Error también escribe su stack. */
   static error(message: string, error?: unknown): void {
     this.log(`ERROR: ${message}`);

@@ -80,17 +80,6 @@ export class TabsLoverHtmlBuilder {
     enableDragDrop: boolean,
   ): string {
     const csp = this.stylesBuilder.buildCSP(webview, nonce);
-    const compactIcon = compactMode ? 'codicon-list-tree' : 'codicon-list-flat';
-
-    const headerHtml = `<div class="view-header">
-  <span class="view-header-title">${this.esc(workspaceName)}</span>
-  <span class="view-header-actions">
-    <button class="view-header-btn" data-action="refresh" title="Refresh"><span class="codicon codicon-refresh"></span></button>
-    <button class="view-header-btn" data-action="reorder" title="Reorder Tabs"><span class="codicon codicon-list-ordered"></span></button>
-    <button class="view-header-btn" data-action="toggleCompactMode" title="Toggle Compact Mode"><span class="codicon ${compactIcon}"></span></button>
-    <button class="view-header-btn" data-action="saveAll" title="Save All"><span class="codicon codicon-save-all"></span></button>
-  </span>
-</div>`;
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -102,7 +91,6 @@ export class TabsLoverHtmlBuilder {
 <link href="${uris.webviewCss}" rel="stylesheet" />
 </head>
 <body>
-  ${headerHtml}
   ${tabsHtml || '<div class="empty">No open tabs</div>'}
   <script nonce="${nonce}" src="${uris.webviewScript}"></script>
   ${uris.dragDropScript ? `<script nonce="${nonce}" src="${uris.dragDropScript}"></script>` : ''}
