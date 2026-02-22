@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
+import { getConfiguration }         from '../constants/styles';
+import { TIMINGS }                  from '../constants/timings';
+import { SideTab }                  from '../models/SideTab';
+import type { TabViewMode }         from '../models/SideTab';
 import { TabStateService }          from '../services/core/TabStateService';
 import { TabIconManager }           from '../services/ui/TabIconManager';
 import { CopilotService }           from '../services/integration/CopilotService';
 import { TabDragDropService }       from '../services/ui/TabDragDropService';
-import { FileActionRegistry }      from '../services/registry/FileActionRegistry';
-import { SideTab }                  from '../models/SideTab';
-import type { TabViewMode }         from '../models/SideTab';
-import { getConfiguration }         from '../constants/styles';
-import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
+import { FileActionRegistry }       from '../services/registry/FileActionRegistry';
 import { Logger }                   from '../utils/logger';
-import { TIMINGS }                  from '../constants/timings';
+import { TabsLoverHtmlBuilder }     from './TabsLoverHtmlBuilder';
 import { TabContextMenu }           from './TabContextMenu';
 
 /**
@@ -166,7 +166,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
           // Pequeño retardo para dar tiempo a que VS Code propague el estado de pestañas sincronizado.
           await new Promise(resolve => setTimeout(resolve, TIMINGS.SYNC_PROPAGATION_DELAY));
         }
-        
+
         const tab = this.findTab(msg.tabId);
         if (!tab) {
           Logger.warn('[TabsLover] Tab not found for activation (likely closed): ' + msg.tabId);
@@ -174,18 +174,18 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
           this.refresh();
           return;
         }
-        
+
         // If this tab is in preview mode, track it as the last preview source
         if (tab.state.viewMode === 'preview') {
           this.stateService.setLastMarkdownPreviewTabId(tab.metadata.id);
         }
-        
+
         try {
           await tab.activate();
         } catch (err: unknown) {
           const errorMsg = err instanceof Error ? err.message : String(err);
           Logger.error('[TabsLover] Failed to activate tab: ' + tab.metadata.label, err);
-          
+
           // Si el error indica que la tab no existe o no corresponde al documento activo,
           // hacer refresh para limpiar
           if (errorMsg.includes('not found') || 
@@ -230,7 +230,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
       }
       case 'dropTab': {
         const { sourceTabId, targetTabId, insertPosition, sourceGroupId, targetGroupId } = msg;
-        
+
         // Movimiento dentro del mismo grupo
         if (sourceGroupId === targetGroupId) {
           this.dragDropService.reorderWithinGroup(sourceTabId, targetTabId, insertPosition);

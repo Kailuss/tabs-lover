@@ -173,7 +173,7 @@ export class TabsLoverHtmlBuilder {
       // Render children (always compact, no path, attached to parent)
       const children = childrenByParent.get(parent.metadata.id) || [];
       for (const child of children) {
-        rendered.push(await this.renderChildTab(child, copilotReady, parent.metadata.id));
+        rendered.push(await this.renderChildTab(child, copilotReady, parent));
       }
     }
     
@@ -195,34 +195,109 @@ export class TabsLoverHtmlBuilder {
   private async renderChildTab(
     tab: SideTab,
     copilotReady: boolean,
-    parentId: string,
+    parent: SideTab,
   ): Promise<string> {
     const activeClass = tab.state.isActive ? ' active' : '';
     const dataGroupId = `data-groupid="${tab.state.groupId}"`;
-    const dataParentId = `data-parentid="${this.esc(parentId)}"`;
-    const stateIndicator = getStateIndicator(tab);
-
-    const chatBtn = copilotReady && tab.metadata.uri
-      ? `<button data-action="addToChat" data-tabid="${this.esc(tab.metadata.id)}" title="Add to Copilot Chat"><span class="codicon codicon-attach"></span></button>`
-      : '';
+    const dataParentId = `data-parentid="${this.esc(parent.metadata.id)}"`;
+    
+    // Determine icon based on diffType and parent state
+    let iconHtml = '<span class="codicon codicon-diff"></span>'; // Default
+    if (tab.metadata.diffType) {
+      switch (tab.metadata.diffType) {
+        case 'working-tree':
+          iconHtml = '<span class="codicon codicon-worktree"></span>';
+          break;
+        case 'staged':
+          iconHtml = '<span class="codicon codicon-git-stage"></span>';
+          break;
+        case 'snapshot':
+          iconHtml = '<span class="codicon codicon-history"></span>';
+          break;
+        case 'merge-conflict':
+          iconHtml = '<span class="codicon codicon-git-merge"></span>';
+          break;
+        case 'incoming':
+          iconHtml = '<span class="codicon codicon-arrow-down"></span>';
+          break;
+        case 'current':
+          iconHtml = '<span class="codicon codicon-arrow-right"></span>';
+          break;
+        case 'incoming-current':
+          iconHtml = '<span class="codicon codicon-git-pull-request"></span>';
+          break;
+      }
+    }
+    
+    // Build diff stats display
+    let statsHtml = '';
+    if (tab.state.diffStats) {
+      const stats = tab.state.diffStats;
+      if (stats.linesAdded !== undefined && stats.linesRemoved !== undefined) {
+        // Working tree / staged: show +/- lines
+        statsHtml = `<span class="child-stats" title="${stats.linesAdded} lines added, ${stats.linesRemoved} lines removed">
+          <span class="stats-added">+${stats.linesAdded}</span>
+          <span class="stats-removed">-${stats.linesRemoved}</span>
+        </span>`;
+      } else if (stats.timestamp) {
+        // Snapshot: show relative time
+        const date = new Date(stats.timestamp);
+        const relativeTime = this.formatRelativeTime(stats.timestamp);
+        statsHtml = `<span class="child-stats" title="${date.toLocaleString()}">${relativeTime}</span>`;
+      } else if (stats.conflictSections) {
+        // Merge conflict: show conflict count
+        statsHtml = `<span class="child-stats conflict" title="${stats.conflictSections} conflict sections">${stats.conflictSections} conflicts</span>`;
+      }
+    }
+    
+    // Show inherited state indicator (errors/warnings from parent)
+    let stateIconHtml = '';
+    if (tab.state.diagnosticSeverity === 0) {
+      stateIconHtml = '<span class="codicon codicon-error state-indicator-error"></span>';
+    } else if (tab.state.diagnosticSeverity === 1) {
+      stateIconHtml = '<span class="codicon codicon-warning state-indicator-warning"></span>';
+    } else if (tab.state.gitStatus === 'conflict') {
+      stateIconHtml = '<span class="codicon codicon-diff-ignored state-indicator-conflict"></span>';
+    }
 
     const closeBtn = tab.state.capabilities.canClose
       ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
       : '';
 
-    // Use diff icon for child tabs
-    const iconHtml = '<span class="codicon codicon-diff"></span>';
-
-    return `<div class="tab child-tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" data-pinned="false" ${dataGroupId} ${dataParentId}>
+    return `<div class="tab child-tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" data-pinned="false" ${dataGroupId} ${dataParentId}>
       <span class="tab-icon">${iconHtml}</span>
-      <div class="tab-text">
-        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}</div>
+      <div class="child-label">
+        <span class="child-name">${this.esc(tab.metadata.label)}</span>
+        ${statsHtml}
       </div>
-      ${stateIndicator.html}
+      ${stateIconHtml}
       <span class="tab-actions">
-        ${chatBtn}${closeBtn}
+        ${closeBtn}
       </span>
     </div>`;
+  }
+
+  /**
+   * Formats a timestamp as relative time (e.g., "2 hours ago")
+   */
+  private formatRelativeTime(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      return `${days}d ago`;
+    }
+    if (hours > 0) {
+      return `${hours}h ago`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ago`;
+    }
+    return 'just now';
   }
 
   /**

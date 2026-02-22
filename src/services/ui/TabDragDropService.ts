@@ -30,6 +30,12 @@ export class TabDragDropService {
     if (!sourceTab || !targetTab) { return false; }
     if (sourceTab.state.groupId !== targetTab.state.groupId) { return false; }
 
+    // Restricción: child tabs no se pueden mover (están vinculadas a su parent)
+    if (sourceTab.metadata.parentId) {
+      Logger.log('[DragDrop] Blocked: Child tabs cannot be dragged independently');
+      return false;
+    }
+
     // Restricción: tabs pinned no se pueden mover
     if (sourceTab.state.isPinned) { return false; }
 

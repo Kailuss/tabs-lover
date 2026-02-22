@@ -66,9 +66,14 @@ export class TabSyncService {
     for (const tab of e.opened) {
       const st = this.convertToSideTab(tab);
       if (st) {
-        // If this is a child tab (diff), ensure its parent exists
+        // If this is a child tab (diff), ensure its parent exists and inherit state
         if (st.metadata.parentId) {
           this.ensureParentExists(st, tab);
+          // Try to inherit state from existing parent (if it was already in the state)
+          const parentTab = this.stateService.getTab(st.metadata.parentId);
+          if (parentTab) {
+            this.inheritParentState(st, parentTab);
+          }
         }
 
         if (st.state.isPreview) {
@@ -147,12 +152,31 @@ export class TabSyncService {
     }
 
     const allTabs: SideTab[] = [];
+    const childTabs: Array<{ sideTab: SideTab; nativeTab: vscode.Tab }> = [];
+    
+    // First pass: collect all tabs, separating parents from children
     for (const group of vscode.window.tabGroups.all) {
       group.tabs.forEach((tab, idx) => {
         const st = this.convertToSideTab(tab, idx);
-        if (st) { allTabs.push(st); }
+        if (st) {
+          if (st.metadata.parentId) {
+            // This is a child tab (diff) - defer it
+            childTabs.push({ sideTab: st, nativeTab: tab });
+          } else {
+            // This is a parent tab or standalone tab - add it immediately
+            allTabs.push(st);
+          }
+        }
       });
     }
+    
+    // Second pass: process child tabs after parents are loaded
+    for (const { sideTab, nativeTab } of childTabs) {
+      // Ensure parent exists (will create it if found in native tabs but not yet converted)
+      this.ensureParentExistsForSync(sideTab, nativeTab, allTabs);
+      allTabs.push(sideTab);
+    }
+    
     this.stateService.replaceTabs(allTabs);
   }
 
@@ -192,11 +216,108 @@ export class TabSyncService {
       if (parentSideTab) {
         Logger.log(`[TabSync] Creating parent tab for child: ${childTab.metadata.label} → ${parentSideTab.metadata.label}`);
         this.stateService.addTab(parentSideTab);
+        // Inherit state from parent
+        this.inheritParentState(childTab, parentSideTab);
       }
     } else {
       // Parent tab doesn't exist in VS Code - this child is orphaned
       // The HTML builder will render it as an orphan (full display, no indent)
       Logger.log(`[TabSync] Orphan child tab detected (no parent in group): ${childTab.metadata.label}`);
+    }
+  }
+
+  /**
+   * Versión de ensureParentExists para el contexto de syncAll.
+   * Busca el parent en el array temporal antes de que se agregue al estado.
+   */
+  private ensureParentExistsForSync(childTab: SideTab, nativeChildTab: vscode.Tab, allTabs: SideTab[]): void {
+    const parentId = childTab.metadata.parentId;
+    if (!parentId) { return; }
+
+    // Check if parent already exists in the array
+    const existingParent = allTabs.find(t => t.metadata.id === parentId);
+    if (existingParent) {
+      // Inherit state from parent
+      this.inheritParentState(childTab, existingParent);
+      return; // Parent exists, all good
+    }
+
+    // Parent doesn't exist - we need to find or create it
+    const group = nativeChildTab.group;
+    const childUri = childTab.metadata.uri;
+    if (!childUri) { return; }
+
+    // Search for a file tab with matching URI in the same group
+    let parentNativeTab: vscode.Tab | undefined;
+    for (const tab of group.tabs) {
+      if (tab.input instanceof vscode.TabInputText) {
+        if (tab.input.uri.toString() === childUri.toString()) {
+          parentNativeTab = tab;
+          break;
+        }
+      }
+    }
+
+    // If found, convert and add it to the array
+    if (parentNativeTab) {
+      const parentSideTab = this.convertToSideTab(parentNativeTab);
+      if (parentSideTab) {
+        Logger.log(`[TabSync] Creating parent tab for child during syncAll: ${childTab.metadata.label} → ${parentSideTab.metadata.label}`);
+        allTabs.push(parentSideTab);
+        // Inherit state from parent
+        this.inheritParentState(childTab, parentSideTab);
+      }
+    } else {
+      // Parent tab doesn't exist in VS Code - this child is orphaned
+      Logger.log(`[TabSync] Orphan child tab detected during syncAll: ${childTab.metadata.label}`);
+    }
+  }
+
+  /**
+   * Makes a child tab inherit relevant state from its parent.
+   * Child tabs show the same git status and diagnostics as their parent file.
+   */
+  private inheritParentState(childTab: SideTab, parentTab: SideTab): void {
+    // Inherit diagnostic and git status
+    childTab.state.diagnosticSeverity = parentTab.state.diagnosticSeverity;
+    childTab.state.gitStatus = parentTab.state.gitStatus;
+    
+    // Calculate diff stats for the child tab
+    this.calculateDiffStats(childTab);
+    
+    Logger.log(`[TabSync] Child tab inherited state: ${childTab.metadata.label} ← diagnostics: ${parentTab.state.diagnosticSeverity}, git: ${parentTab.state.gitStatus}`);
+  }
+
+  /**
+   * Calculates diff statistics for a child tab based on its type.
+   * For working-tree and staged: attempts to get line counts from VS Code diff.
+   * For snapshots: uses timestamp information.
+   */
+  private calculateDiffStats(childTab: SideTab): void {
+    if (!childTab.metadata.diffType) { return; }
+    
+    const diffType = childTab.metadata.diffType;
+    
+    // For working-tree and staged, we'll set placeholder stats
+    // In a real implementation, you would parse the diff content
+    if (diffType === 'working-tree' || diffType === 'staged') {
+      // TODO: Implement actual diff parsing when VS Code API supports it
+      // For now, show placeholder stats
+      childTab.state.diffStats = {
+        linesAdded: 0,
+        linesRemoved: 0,
+      };
+    } else if (diffType === 'snapshot') {
+      // For snapshots, use current time as placeholder
+      childTab.state.diffStats = {
+        timestamp: Date.now(),
+        snapshotName: childTab.metadata.label,
+      };
+    } else if (diffType === 'merge-conflict') {
+      // For merge conflicts, count would need to parse the file
+      childTab.state.diffStats = {
+        conflictSections: 0, // Placeholder
+      };
     }
   }
 
@@ -514,17 +635,21 @@ export class TabSyncService {
 
     const viewColumn = tab.group.viewColumn;
 
-    // Calculate parentId for diff tabs (link to corresponding file tab)
+    // Calculate parentId and diffType for diff tabs (link to corresponding file tab)
     let parentId: string | undefined;
+    let diffType: import('../../models/SideTab').DiffType | undefined;
     if (tabType === 'diff' && uri) {
       // The parent is the file tab with the same URI in the same group
       parentId = `${uri.toString()}-${viewColumn}`;
+      // Classify the diff type based on the label
+      diffType = this.classifyDiffType(label);
     }
 
     // Build base metadata
     const baseMetadata: SideTabMetadata = {
       id: this.generateId(label, uri, viewColumn, tabType),
       parentId,
+      diffType,
       uri,
       label,
       detailLabel: description,
@@ -637,7 +762,37 @@ export class TabSyncService {
     const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
     return `${tabType}:${safe}-${viewColumn}`;
   }
-
+  /**
+   * Classifies a diff tab based on its label.
+   * Returns the specific diff type for proper icon and stats display.
+   */
+  private classifyDiffType(label: string): import('../../models/SideTab').DiffType {
+    const lower = label.toLowerCase();
+    
+    if (lower.includes('working tree') || lower === 'working tree') {
+      return 'working-tree';
+    }
+    if (lower.includes('staged') || lower.includes('index')) {
+      return 'staged';
+    }
+    if (lower.includes('snapshot') || lower.includes('timeline')) {
+      return 'snapshot';
+    }
+    if (lower.includes('merge conflict') || lower.includes('conflict')) {
+      return 'merge-conflict';
+    }
+    if (lower.includes('incoming')) {
+      if (lower.includes('current')) {
+        return 'incoming-current';
+      }
+      return 'incoming';
+    }
+    if (lower.includes('current')) {
+      return 'current';
+    }
+    
+    return 'unknown';
+  }
   /**
    * Obtiene la severidad más alta de diagnóstico para un archivo.
    * Retorna Error si hay errores, Warning si hay advertencias, o null si no hay diagnósticos.
