@@ -66,6 +66,11 @@ export class TabSyncService {
     for (const tab of e.opened) {
       const st = this.convertToSideTab(tab);
       if (st) {
+        // If this is a child tab (diff), ensure its parent exists
+        if (st.metadata.parentId) {
+          this.ensureParentExists(st, tab);
+        }
+
         if (st.state.isPreview) {
           Logger.log('[TabSync] Opened preview tab: ' + st.metadata.label);
         }
@@ -149,6 +154,50 @@ export class TabSyncService {
       });
     }
     this.stateService.replaceTabs(allTabs);
+  }
+
+  /**
+   * Asegura que el parent tab de un diff exista en el estado.
+   * Si el archivo base no está abierto como tab, lo crea automáticamente.
+   */
+  private ensureParentExists(childTab: SideTab, nativeChildTab: vscode.Tab): void {
+    const parentId = childTab.metadata.parentId;
+    if (!parentId) { return; }
+
+    // Check if parent already exists
+    if (this.stateService.getTab(parentId)) {
+      return; // Parent exists, all good
+    }
+
+    // Parent doesn't exist - we need to find or create it
+    // For diff tabs, the parent is the file tab with the same URI in the same group
+    const group = nativeChildTab.group;
+    const childUri = childTab.metadata.uri;
+    if (!childUri) { return; }
+
+    // Search for a file tab with matching URI in the same group
+    let parentNativeTab: vscode.Tab | undefined;
+    for (const tab of group.tabs) {
+      if (tab.input instanceof vscode.TabInputText) {
+        if (tab.input.uri.toString() === childUri.toString()) {
+          parentNativeTab = tab;
+          break;
+        }
+      }
+    }
+
+    // If found, convert and add it
+    if (parentNativeTab) {
+      const parentSideTab = this.convertToSideTab(parentNativeTab);
+      if (parentSideTab) {
+        Logger.log(`[TabSync] Creating parent tab for child: ${childTab.metadata.label} → ${parentSideTab.metadata.label}`);
+        this.stateService.addTab(parentSideTab);
+      }
+    } else {
+      // Parent tab doesn't exist in VS Code - this child is orphaned
+      // The HTML builder will render it as an orphan (full display, no indent)
+      Logger.log(`[TabSync] Orphan child tab detected (no parent in group): ${childTab.metadata.label}`);
+    }
   }
 
   //: Seguimiento de la pestaña activa (actualiza solo isActive) 
