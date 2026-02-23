@@ -10,7 +10,7 @@ export type TabViewMode = 'source' | 'preview' | 'split';
 //: Edit mode for tabs
 export type EditMode = 'readonly' | 'editable';
 //: Diff type for child tabs (diff visualizations)
-export type DiffType = 'working-tree' | 'staged' | 'snapshot' | 'merge-conflict' | 'incoming' | 'current' | 'incoming-current' | 'unknown';
+export type DiffType = 'working-tree' | 'staged' | 'snapshot' | 'commit' | 'edit' | 'merge-conflict' | 'incoming' | 'current' | 'incoming-current' | 'unknown';
 
 /**
  * Diff statistics for child tabs
@@ -106,6 +106,9 @@ export type SideTabMetadata = {
   parentId?     : string;        // ID of parent tab (for diff tabs that belong to a file tab).
   tabType       : SideTabType;   // What kind of VS Code tab input this wraps.
   diffType?     : DiffType;      // Type of diff (for child tabs only)
+  
+  //: DOCUMENT LINK (NEW)
+  documentId?   : string;        // ID of associated DocumentModel (for complex document metadata)
 
   //: FILE INFORMATION
   uri?          : vscode.Uri;    // File URI. Only present for file / custom / notebook tabs.
@@ -218,7 +221,6 @@ export type SideTabState = {
   //: HIERARCHY
   hasChildren        : boolean;   // Has child tabs (diffs, previews)
   isChild            : boolean;   // Is a child tab of another
-  isExpanded         : boolean;   // If has children: is expanded in UI?
   childrenCount      : number;    // Number of child tabs (for badge display)
 
   //: UI STATE
@@ -230,6 +232,10 @@ export type SideTabState = {
   //: TRACKING
   lastAccessTime     : number;    // Timestamp of last access
   syncVersion        : number;    // Sync version (prevent stale updates)
+
+  //: CURSOR POSITION (for parent-child sync)
+  cursorLine?        : number;    // Current cursor line (1-based)
+  cursorColumn?      : number;    // Current cursor column (1-based)
 
   //: DECORATIONS
   gitStatus          : GitStatus;  // Git decoration state
@@ -252,6 +258,19 @@ export type SideTabState = {
  * En pocas palabras: guarda la información que mostramos (nombre, ruta, icono)
  * y ofrece métodos para las acciones que el usuario puede realizar (abrir, cerrar, pinear...).
  * Los métodos de acción están definidos en SideTabActions (herencia).
+ * 
+ * @remarks
+ * ARQUITECTURA: SideTab es responsable de la representación visual y estado de UI.
+ * Para gestión compleja de metadata de documentos y versiones (diffs, snapshots),
+ * SideTab delega a DocumentModel a través del campo `metadata.documentId`.
+ * 
+ * Relación con DocumentModel:
+ * - Parent tabs con URI: pueden tener un DocumentModel asociado
+ * - Child tabs (diffs): su metadata está en VersionMetadata del DocumentModel parent
+ * - DocumentManager gestiona el ciclo de vida y búsqueda de DocumentModels
+ * 
+ * @see DocumentModel for complete document metadata
+ * @see DocumentManager for document lifecycle management
  */
 export class SideTab extends SideTabActions {
   constructor(

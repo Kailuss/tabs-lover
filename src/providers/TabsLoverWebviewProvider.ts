@@ -23,6 +23,7 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _fullRefreshPending = false;
+  private _initialLoadComplete = false;
   private readonly htmlBuilder: TabsLoverHtmlBuilder;
   private readonly contextMenu: TabContextMenu;
 
@@ -36,7 +37,9 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
     private readonly dragDropService: TabDragDropService,
     private readonly fileActionRegistry: FileActionRegistry,
   ) {
-    this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context, fileActionRegistry);
+    // Get DocumentManager from syncService if available
+    const documentManager = this.syncService?.getDocumentManager?.();
+    this.htmlBuilder = new TabsLoverHtmlBuilder(_extensionUri, iconManager, context, fileActionRegistry, documentManager);
     this.contextMenu = new TabContextMenu(stateService, copilotService);
     // Full rebuild on structural changes
     stateService.onDidChangeState(() => this.refresh());
@@ -103,7 +106,10 @@ export class TabsLoverWebviewProvider implements vscode.WebviewViewProvider {
         showPath       : config.showFilePath,
         copilotReady,
         enableDragDrop : config.enableDragDrop,
+        initialLoad    : !this._initialLoadComplete,
       });
+      
+      this._initialLoadComplete = true;
 
       // Also update the native VS Code panel title
       this._view.title = this.getWorkspaceName();

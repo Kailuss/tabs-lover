@@ -1,6 +1,10 @@
 // Core services - Estado y sincronización fundamentales
 export { TabStateService } from './core/TabStateService';
 export { TabSyncService } from './core/TabSyncService';
+export { TabHierarchyService } from './core/TabHierarchyService';
+export type { TabTreeNode } from './core/TabHierarchyService';
+export { DocumentManager } from './core/DocumentManager';
+export type { DocumentManagerOptions } from './core/DocumentManager';
 
 // UI services - Presentación e interacción visual
 export { ThemeService } from './ui/ThemeService';

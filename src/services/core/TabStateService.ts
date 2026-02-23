@@ -1,12 +1,18 @@
 import * as vscode      from 'vscode';
 import { SideTab }      from '../../models/SideTab';
 import { SideTabGroup } from '../../models/SideTabGroup';
+import { Logger }       from '../../utils/logger';
+import type { TabHierarchyService } from './TabHierarchyService';
+import type { DocumentManager } from './DocumentManager';
 
 /**
  * Almacén en memoria de pestañas y grupos — la "fuente de la verdad" para la UI.
  * - `onDidChangeState`: cuando cambia la estructura (abrir/cerrar/mover pestañas).
  * - `onDidChangeStateSilent`: cambios ligeros (ej. solo `isActive`) que no necesitan
  *   una recarga completa del webview.
+ * 
+ * REFACTORIZACIÓN: Añadido soporte para hierarchy service.
+ * @see docs/PLAN_OPTIMIZACION_TABSYNC.md
  */
 export class TabStateService {
   private tabs   : Map<string, SideTab>      = new Map();
@@ -18,6 +24,12 @@ export class TabStateService {
   readonly onDidChangeStateSilent            = this._onDidChangeStateSilent.event;
   private _onDidChangeTabState               = new vscode.EventEmitter<string>();
   readonly onDidChangeTabState               = this._onDidChangeTabState.event;
+  
+  // Hierarchy service (injected to avoid circular dependency)
+  private hierarchyService?: TabHierarchyService;
+  
+  // Document manager (injected to avoid circular dependency)
+  private documentManager?: DocumentManager;
 
   /** 
    * ID de la última tab que activó el Markdown Preview.
@@ -33,6 +45,22 @@ export class TabStateService {
     this._lastMarkdownPreviewTabId = tabId;
   }
 
+  /**
+   * Inyecta el hierarchy service para evitar dependencia circular.
+   * Llamado desde TabSyncService después de crear TabHierarchyService.
+   */
+  setHierarchyService(service: TabHierarchyService): void {
+    this.hierarchyService = service;
+  }
+  
+  /**
+   * Inyecta el document manager para gestión centralizada de documentos.
+   * Llamado desde TabSyncService después de crear DocumentManager.
+   */
+  setDocumentManager(manager: DocumentManager): void {
+    this.documentManager = manager;
+  }
+
   //- Tab management
 
   // Add a tab (or update if it already exists in the group).
@@ -41,8 +69,31 @@ export class TabStateService {
 
     const group = this.groups.get(tab.state.groupId);
     if (group) {
-      if (!group.tabs.find(t => t.metadata.id === tab.metadata.id)) {
+      const existsInGroup = group.tabs.find(t => t.metadata.id === tab.metadata.id);
+      if (!existsInGroup) {
         group.tabs.push(tab);
+      }
+    }
+    
+    // Create/update document if this is a parent tab with URI
+    if (this.documentManager && tab.metadata.uri && !tab.metadata.parentId) {
+      const document = this.documentManager.getOrCreateDocument(
+        tab.metadata.uri,
+        tab.metadata.languageId || 'plaintext',
+        tab.metadata.label,
+        tab.metadata.fileExtension || ''
+      );
+      this.documentManager.associateParentTab(document.documentId, tab.metadata.id);
+    }
+    
+    // Associate child tab with document if parent exists
+    if (this.documentManager && tab.metadata.parentId && tab.metadata.uri) {
+      const parentTab = this.tabs.get(tab.metadata.parentId);
+      if (parentTab?.metadata.uri) {
+        const document = this.documentManager.getDocumentByUri(parentTab.metadata.uri);
+        if (document) {
+          this.documentManager.associateChildTab(document.documentId, tab.metadata.id);
+        }
       }
     }
 
@@ -50,12 +101,56 @@ export class TabStateService {
   }
 
   // Remove a tab by id and clean it from its group.
+  // ✅ NUEVO: Desregistra children del parent si es necesario
   removeTab(id: string): void {
+    const tab = this.tabs.get(id);
+    if (!tab) {
+      return;
+    }
+    
+    // Si es child tab, desregistrar del parent
+    if (tab.metadata.parentId && this.hierarchyService) {
+      this.hierarchyService.unregisterChild(id, tab.metadata.parentId);
+    }
+    
+    // Si es parent tab con children, eliminar children primero
+    if (tab.state.hasChildren && this.hierarchyService) {
+      const children = this.hierarchyService.getChildren(id);
+      for (const child of children) {
+        this.removeTabInternal(child.metadata.id);
+      }
+    }
+    
+    this.removeTabInternal(id);
+  }
+
+  // Método interno para eliminar sin lógica de jerarquía (evita recursión)
+  private removeTabInternal(id: string): void {
     const tab = this.tabs.get(id);
     if (tab) {
       const group = this.groups.get(tab.state.groupId);
       if (group) {
         group.tabs = group.tabs.filter(t => t.metadata.id !== id);
+      }
+      
+      // Cleanup document associations
+      if (this.documentManager) {
+        if (tab.metadata.parentId) {
+          // Desasociar child tab del documento
+          const parentTab = this.tabs.get(tab.metadata.parentId);
+          if (parentTab?.metadata.uri) {
+            const document = this.documentManager.getDocumentByUri(parentTab.metadata.uri);
+            if (document) {
+              this.documentManager.dissociateChildTab(document.documentId, id);
+            }
+          }
+        } else if (tab.metadata.uri) {
+          // Desasociar parent tab del documento
+          const document = this.documentManager.getDocumentByUri(tab.metadata.uri);
+          if (document) {
+            this.documentManager.dissociateParentTab(document.documentId);
+          }
+        }
       }
 
       this.tabs.delete(id);

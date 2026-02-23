@@ -4,6 +4,21 @@
 
 const vscode = acquireVsCodeApi();
 
+// Fade in body after initial render (solo si no tiene la clase loaded)
+if (!document.body.classList.contains('loaded')) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      requestAnimationFrame(() => {
+        document.body.classList.add('loaded');
+      });
+    });
+  } else {
+    requestAnimationFrame(() => {
+      document.body.classList.add('loaded');
+    });
+  }
+}
+
 // Evitar mensajes duplicados durante la animación de cierre
 const closingTabs = new Set();
 

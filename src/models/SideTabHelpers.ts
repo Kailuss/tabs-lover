@@ -398,7 +398,6 @@ export class SideTabHelpers {
       // HIERARCHY
       hasChildren: false,
       isChild: false,
-      isExpanded: false,  // Non-optional: always initialized
       childrenCount: 0,   // Non-optional: always initialized
       
       // UI STATE

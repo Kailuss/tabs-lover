@@ -44,6 +44,14 @@ That's it. No configuration needed — it works great out of the box.
 ### 👥 Multi-Window Support
 When you split your editor, Tabs Lover groups your tabs automatically. Each group gets its own header so you always know what's where.
 
+### 🔄 Parent-Child Hierarchy
+Diffs, snapshots, and comparisons are organized as children under their source file. Keep your workspace tidy even when reviewing multiple versions of the same file.
+
+### 🎯 Cursor Position Sync (New!)
+**Experimental**: Synchronize cursor position between parent files and their diffs/snapshots. When enabled, moving your cursor in one view automatically updates all related tabs to the same line and column — perfect for comparing changes at specific locations.
+
+*Enable with:* `"tabsLover.syncCursorPosition": true` (default: off)
+
 ## Requirements
 
 - VS Code **1.85.0** or later
@@ -68,6 +76,9 @@ Open VS Code Settings (`Ctrl+,` or `Cmd+,`) and search for "Tabs Lover":
   *Default: On*
 
 - **Drag & drop** — Reorder tabs by dragging (experimental)  
+  *Default: Off*
+
+- **Sync cursor position** — Synchronize cursor between parent and child tabs  
   *Default: Off*
 
 ## 🎮 Quick Commands

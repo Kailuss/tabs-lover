@@ -2,7 +2,7 @@
   "name": "tabs-lover",
   "displayName": "Tabs Lover",
   "description": "Vertical tabs panel with advanced features",
-  "version": "0.0.1",
+  "version": "0.3.3",
   "publisher": "Kailuss",
   "repository": {
     "type": "git",
@@ -264,6 +264,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable drag & drop reordering of tabs within and across groups."
+        },
+        "tabsLover.syncCursorPosition": {
+          "type": "boolean",
+          "default": false,
+          "description": "Synchronize cursor position (line and column) between parent tabs and their children (diffs, snapshots, etc.). When enabled, moving the cursor in one tab will update all related tabs."
         }
       }
     }

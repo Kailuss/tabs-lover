@@ -10,11 +10,13 @@
 
 import * as vscode from 'vscode';
 import { TabIconManager } from '../services/ui/TabIconManager';
+import type { DocumentManager } from '../services/core/DocumentManager';
 import { SideTab } from '../models/SideTab';
 import { SideTabGroup } from '../models/SideTabGroup';
 import { FileActionRegistry } from '../services/registry/FileActionRegistry';
 import { getStateIndicator } from '../utils/stateIndicator';
 import { IconRenderer, StylesBuilder, BuildHtmlOptions, WebviewResourceUris } from './html';
+import { getDiffTypeDisplay, getDiffTypeBadgeHtml } from '../constants/diffTypes';
 
 export class TabsLoverHtmlBuilder {
   private readonly iconRenderer: IconRenderer;
@@ -25,6 +27,7 @@ export class TabsLoverHtmlBuilder {
     private readonly iconManager: TabIconManager,
     private readonly context: vscode.ExtensionContext,
     private readonly fileActionRegistry?: FileActionRegistry,
+    private readonly documentManager?: DocumentManager,
   ) {
     this.iconRenderer = new IconRenderer(iconManager, context);
     this.stylesBuilder = new StylesBuilder();
@@ -51,7 +54,7 @@ export class TabsLoverHtmlBuilder {
     const nonce = this.generateNonce();
     const tabsHtml = await this.renderAllTabs(grps, getTabs, path, copilot, dragDrop, compactMode);
 
-    return this.assembleHtml(webview, uris, nonce, workspaceName, compactMode, tabsHtml, dragDrop);
+    return this.assembleHtml(webview, uris, nonce, workspaceName, compactMode, tabsHtml, dragDrop, options.initialLoad);
   }
 
   //= RESOLUCIÓN DE RECURSOS
@@ -78,8 +81,11 @@ export class TabsLoverHtmlBuilder {
     compactMode: boolean,
     tabsHtml: string,
     enableDragDrop: boolean,
+    initialLoad = false,
   ): string {
     const csp = this.stylesBuilder.buildCSP(webview, nonce);
+    const criticalCss = this.stylesBuilder.buildCriticalCSS();
+    const bodyClass = initialLoad ? '' : 'loaded';
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -87,10 +93,11 @@ export class TabsLoverHtmlBuilder {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
+<style>${criticalCss}</style>
 <link href="${uris.codiconCss}" rel="stylesheet" />
 <link href="${uris.webviewCss}" rel="stylesheet" />
 </head>
-<body>
+<body class="${bodyClass}">
   ${tabsHtml || '<div class="empty">No open tabs</div>'}
   <script nonce="${nonce}" src="${uris.webviewScript}"></script>
   ${uris.dragDropScript ? `<script nonce="${nonce}" src="${uris.dragDropScript}"></script>` : ''}
@@ -127,7 +134,7 @@ export class TabsLoverHtmlBuilder {
   private renderGroupHeader(group: SideTabGroup): string {
     const marker = group.isActive ? ' ●' : '';
     return `<div class="group-header" data-groupid="${group.id}">
-      <span class="codicon codicon-files group-icon"></span>
+      <span class="codicon codicon-files files"></span>
       <span class="group-label">${this.esc(group.label)}${marker}</span>
       <span class="group-actions">
         <button class="group-btn" data-action="closeGroup" data-groupid="${group.id}" title="Close Group"><span class="codicon codicon-close-all"></span></button>
@@ -200,84 +207,62 @@ export class TabsLoverHtmlBuilder {
     copilotReady: boolean,
     parent: SideTab,
   ): Promise<string> {
-    // data-groupid lives on the parent .tab-block wrapper
     const activeClass = tab.state.isActive ? ' active' : '';
     const dataParentId = `data-parentid="${this.esc(parent.metadata.id)}"`;
-    
-    // Determine icon based on diffType and parent state
-    let iconHtml = '<span class="codicon codicon-diff"></span>'; // Default
-    if (tab.metadata.diffType) {
-      switch (tab.metadata.diffType) {
-        case 'working-tree':
-          iconHtml = '<span class="codicon codicon-diff"></span>';
-          break;
-        case 'staged':
-          iconHtml = '<span class="codicon codicon-git-stage"></span>';
-          break;
-        case 'snapshot':
-          iconHtml = '<span class="codicon codicon-history"></span>';
-          break;
-        case 'merge-conflict':
-          iconHtml = '<span class="codicon codicon-git-merge"></span>';
-          break;
-        case 'incoming':
-          iconHtml = '<span class="codicon codicon-arrow-down"></span>';
-          break;
-        case 'current':
-          iconHtml = '<span class="codicon codicon-arrow-right"></span>';
-          break;
-        case 'incoming-current':
-          iconHtml = '<span class="codicon codicon-git-pull-request"></span>';
-          break;
-      }
-    }
-    
-    // Build diff stats display
-    let statsHtml = '';
-    if (tab.state.diffStats) {
-      const stats = tab.state.diffStats;
-      if (stats.linesAdded !== undefined && stats.linesRemoved !== undefined) {
-        // Working tree / staged: show +/- lines
-        statsHtml = `<span class="child-stats" title="${stats.linesAdded} lines added, ${stats.linesRemoved} lines removed">
-          <span class="stats-added">+${stats.linesAdded}</span>
-          <span class="stats-removed">-${stats.linesRemoved}</span>
-        </span>`;
-      } else if (stats.timestamp) {
-        // Snapshot: show relative time
-        const date = new Date(stats.timestamp);
-        const relativeTime = this.formatRelativeTime(stats.timestamp);
-        statsHtml = `<span class="child-stats" title="${date.toLocaleString()}">${relativeTime}</span>`;
-      } else if (stats.conflictSections) {
-        // Merge conflict: show conflict count
-        statsHtml = `<span class="child-stats conflict" title="${stats.conflictSections} conflict sections">${stats.conflictSections} conflicts</span>`;
-      }
-    }
-    
-    // Show inherited state indicator (errors/warnings from parent)
-    let stateIconHtml = '';
-    if (tab.state.diagnosticSeverity === 0) {
-      stateIconHtml = '<span class="codicon codicon-error state-indicator-error"></span>';
-    } else if (tab.state.diagnosticSeverity === 1) {
-      stateIconHtml = '<span class="codicon codicon-warning state-indicator-warning"></span>';
-    } else if (tab.state.gitStatus === 'conflict') {
-      stateIconHtml = '<span class="codicon codicon-diff-ignored state-indicator-conflict"></span>';
-    }
 
+    // Get diff type display info
+    const diffInfo = getDiffTypeDisplay(tab.metadata.diffType, tab.metadata.label);
+    const diffTypeClass = diffInfo?.cssClass ? ` ${diffInfo.cssClass}` : '';
+    
+    // Icon and label
+    const iconHtml = diffInfo 
+      ? `<span class="codicon codicon-${diffInfo.icon}"></span>` 
+      : '<span class="codicon codicon-diff"></span>';
+    const labelHtml = diffInfo ? this.esc(diffInfo.label) : 'Diff';
+
+    // Stats display
+    const statsHtml = this.renderChildStats(tab.state.diffStats);
+
+    // Close button
     const closeBtn = tab.state.capabilities.canClose
-      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-remove-close"></span></button>`
+      ? `<button data-action="closeTab" data-tabid="${this.esc(tab.metadata.id)}" title="Close"><span class="codicon codicon-close"></span></button>`
       : '';
 
-    return `<div class="tab child-tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataParentId}>
+    return `<div class="tab child-tab${activeClass}${diffTypeClass}" data-tabid="${this.esc(tab.metadata.id)}" ${dataParentId}>
       <span class="tab-icon">${iconHtml}</span>
-      <div class="child-label">
-        <span class="child-name">${this.esc(tab.metadata.label)}</span>
-        ${statsHtml}
-      </div>
-      ${stateIconHtml}
-      <span class="tab-actions">
-        ${closeBtn}
-      </span>
+      <span class="child-type-label">${labelHtml}</span>
+      ${statsHtml}
+      <span class="tab-actions">${closeBtn}</span>
     </div>`;
+  }
+
+  /**
+   * Renders stats for a child tab (diff statistics)
+   */
+  private renderChildStats(diffStats: any): string {
+    if (!diffStats) {
+      return '';
+    }
+
+    const { linesAdded, linesRemoved, timestamp, conflictSections } = diffStats;
+
+    // Lines changed (working tree, staged, edit)
+    if (linesAdded !== undefined && linesRemoved !== undefined) {
+      return `<span class="child-stats" title="${linesAdded} lines added, ${linesRemoved} lines removed"><span class="stats-added">+${linesAdded}</span><span class="stats-removed">-${linesRemoved}</span></span>`;
+    }
+
+    // Timestamp (snapshots)
+    if (timestamp) {
+      const relativeTime = this.formatRelativeTime(timestamp);
+      return `<span class="child-stats" title="${new Date(timestamp).toLocaleString()}">${relativeTime}</span>`;
+    }
+
+    // Conflicts
+    if (conflictSections) {
+      return `<span class="child-stats conflict" title="${conflictSections} conflict sections">${conflictSections} conflicts</span>`;
+    }
+
+    return '';
   }
 
   /**
@@ -290,7 +275,7 @@ export class TabsLoverHtmlBuilder {
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-    
+
     if (days > 0) {
       return `${days}d ago`;
     }
@@ -331,6 +316,9 @@ export class TabsLoverHtmlBuilder {
     const pinBadge = tab.state.isPinned
       ? '<span class="pin-badge codicon codicon-pinned" title="Pinned"></span>'
       : '';
+    
+    // Version badge for parent tabs with multiple versions
+    const versionBadge = this.renderVersionBadge(tab);
 
     const fileActionBtn = tab.state.capabilities.canTogglePreview
       ? this.renderFileActionButton(tab)
@@ -354,7 +342,7 @@ export class TabsLoverHtmlBuilder {
       return `<div class="tab compact${activeClass}" data-tabid="${this.esc(tab.metadata.id)}">
       <span class="tab-icon">${iconHtml}</span>
       <div class="tab-text">
-        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${pathSuffix}</div>
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${versionBadge}${pathSuffix}</div>
       </div>
       ${stateIndicator.html}
       <span class="tab-actions">
@@ -371,7 +359,7 @@ export class TabsLoverHtmlBuilder {
     return `<div class="tab${activeClass}" data-tabid="${this.esc(tab.metadata.id)}">
       <span class="tab-icon">${iconHtml}</span>
       <div class="tab-text">
-        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}</div>
+        <div class="tab-name${stateIndicator.nameClass}">${this.esc(tab.metadata.label)}${pinBadge}${versionBadge}</div>
         ${pathHtml}
       </div>
       ${stateIndicator.html}
@@ -392,6 +380,54 @@ export class TabsLoverHtmlBuilder {
     if (!resolved) { return ''; }
 
     return `<button data-action="fileAction" data-tabid="${this.esc(tab.metadata.id)}" data-actionid="${this.esc(resolved.id)}" title="${this.esc(resolved.tooltip)}"><span class="codicon codicon-${this.esc(resolved.icon)}"></span></button>`;
+  }
+  
+  /**
+   * Renderiza un badge con el número de versiones del documento.
+   * Solo se muestra para parent tabs que tienen document model con versiones.
+   */
+  private renderVersionBadge(tab: SideTab): string {
+    // Only show for parent tabs (not children)
+    if (tab.metadata.parentId || !tab.metadata.uri || !this.documentManager) {
+      return '';
+    }
+    
+    const document = this.documentManager.getDocumentByUri(tab.metadata.uri);
+    if (!document || document.versionCount === 0) {
+      return '';
+    }
+    
+    const stats = this.documentManager.getDocumentStats(document.documentId);
+    if (!stats) {
+      return '';
+    }
+    
+    // Build tooltip with version breakdown
+    const tooltipParts: string[] = [];
+    if (stats.workingTreeVersions > 0) {
+      tooltipParts.push(`${stats.workingTreeVersions} working tree`);
+    }
+    if (stats.stagedVersions > 0) {
+      tooltipParts.push(`${stats.stagedVersions} staged`);
+    }
+    if (stats.snapshots > 0) {
+      tooltipParts.push(`${stats.snapshots} snapshots`);
+    }
+    if (stats.aiEdits > 0) {
+      tooltipParts.push(`${stats.aiEdits} AI edits`);
+    }
+    if (stats.commits > 0) {
+      tooltipParts.push(`${stats.commits} commits`);
+    }
+    
+    const tooltip = tooltipParts.length > 0
+      ? `${stats.totalVersions} versions (${tooltipParts.join(', ')})`
+      : `${stats.totalVersions} versions`;
+    
+    return `<span class="version-badge" title="${this.esc(tooltip)}">
+      <span class="codicon codicon-versions"></span>
+      <span class="version-count">${stats.totalVersions}</span>
+    </span>`;
   }
 
   //= UTILIDADES

@@ -1,11 +1,11 @@
 import * as vscode                                             from 'vscode';
-import * as path                                               from 'path';
 import { TabStateService }                                     from './TabStateService';
 import { GitSyncService }                                      from '../integration/GitSyncService';
-import { SideTab, SideTabMetadata, SideTabState, SideTabType } from '../../models/SideTab';
-import { SideTabHelpers }                                      from '../../models/SideTabHelpers';
+import { TabHierarchyService }                                 from './TabHierarchyService';
+import { DocumentManager }                                     from './DocumentManager';
+import { SideTab }                                             from '../../models/SideTab';
 import { createTabGroup }                                      from '../../models/SideTabGroup';
-import { formatFilePath }                                      from '../../utils/helpers';
+import { convertToSideTab, generateIdFromNativeTab, getDiagnosticSeverity } from './helpers/tabConverter';
 import { Logger }                                              from '../../utils/logger';
 
 /**
@@ -16,13 +16,37 @@ import { Logger }                                              from '../../utils
  * 
  * NOTA: Las tabs de Markdown Preview se filtran directamente en convertToSideTab()
  * y se manejan como estado toggle (viewMode) en la tab del archivo fuente.
+ * 
+ * REFACTORIZACIÓN: Código modularizado en helpers y servicios especializados.
+ * @see docs/PLAN_OPTIMIZACION_TABSYNC.md
  */
 export class TabSyncService {
   private disposables: vscode.Disposable[] = [];
   private gitSyncService: GitSyncService;
+  private hierarchyService: TabHierarchyService;
+  private documentManager: DocumentManager;
+  
+  // Map para relacionar IDs de tabs con versionIds únicos del DocumentModel
+  // Esto permite rastrear qué version del documento corresponde a cada child tab
+  private readonly tabIdToVersionId: Map<string, string> = new Map();
 
   constructor(private stateService: TabStateService) {
     this.gitSyncService = new GitSyncService(this.stateService);
+    this.hierarchyService = new TabHierarchyService(this.stateService);
+    this.documentManager = new DocumentManager({
+      autoCleanup: true,
+      cleanupInterval: 300000, // 5 minutes
+      inactivityThreshold: 600000, // 10 minutes
+    });
+    
+    // Inject services into state service to avoid circular dependencies
+    this.stateService.setHierarchyService(this.hierarchyService);
+    this.stateService.setDocumentManager(this.documentManager);
+  }
+  
+  /** Get access to the document manager for external use */
+  getDocumentManager(): DocumentManager {
+    return this.documentManager;
   }
 
   /** Registra los listeners necesarios y realiza una sincronización inicial.
@@ -55,6 +79,13 @@ export class TabSyncService {
       }),
     );
 
+    // Listener para cambios en la selección del editor (posición del cursor)
+    this.disposables.push(
+      vscode.window.onDidChangeTextEditorSelection(e => {
+        this.handleCursorChange(e);
+      }),
+    );
+
     // Sincronización/estado Git (servicio dedicado)
     this.gitSyncService.activate(context);
 
@@ -62,24 +93,40 @@ export class TabSyncService {
   }
 
   //: Manejadores de eventos (qué hacer cuando cambian las pestañas)
-  private handleTabChanges(e: vscode.TabChangeEvent): void {
+  private async handleTabChanges(e: vscode.TabChangeEvent): Promise<void> {
     for (const tab of e.opened) {
-      const st = this.convertToSideTab(tab);
+      const st = convertToSideTab(tab, this.gitSyncService);
       if (st) {
-        // If this is a child tab (diff), ensure its parent exists and inherit state
+        // ✅ CORREGIDO: Si es child tab, esperar a que parent exista antes de añadir
         if (st.metadata.parentId) {
-          this.ensureParentExists(st, tab);
-          // Try to inherit state from existing parent (if it was already in the state)
+          await this.ensureParentExists(st, tab);
           const parentTab = this.stateService.getTab(st.metadata.parentId);
           if (parentTab) {
-            this.inheritParentState(st, parentTab);
+            Logger.log(`[TabSync] Child tab opened: ${st.metadata.label} (id: ${st.metadata.id}, parentId: ${st.metadata.parentId}, diffType: ${st.metadata.diffType})`);
+            this.hierarchyService.inheritState(st, parentTab);
+            // Añadir tab primero, luego registrar en jerarquía
+            this.stateService.addTab(st);
+            this.hierarchyService.registerChild(st.metadata.id, st.metadata.parentId);
+            
+            // Register child version in DocumentManager
+            this.registerTabVersion(st, parentTab);
+          } else {
+            // Parent no existe, añadir como tab huérfana
+            Logger.log(`[TabSync] Orphan child tab: ${st.metadata.label} (parentId: ${st.metadata.parentId} not found)`);
+            this.stateService.addTab(st);
+          }
+        } else {
+          // Tab normal (no child)
+          if (st.state.isPreview) {
+            Logger.log('[TabSync] Opened preview tab: ' + st.metadata.label);
+          }
+          this.stateService.addTab(st);
+          
+          // Register or create document for non-child tabs with URI
+          if (st.metadata.uri) {
+            this.ensureDocumentExists(st);
           }
         }
-
-        if (st.state.isPreview) {
-          Logger.log('[TabSync] Opened preview tab: ' + st.metadata.label);
-        }
-        this.stateService.addTab(st);
       }
     }
 
@@ -91,7 +138,7 @@ export class TabSyncService {
     }
 
     for (const tab of e.changed) {
-      const st = this.convertToSideTab(tab);
+      const st = convertToSideTab(tab, this.gitSyncService);
       if (!st) { continue; }
 
       const existing = this.stateService.getTab(st.metadata.id);
@@ -121,7 +168,7 @@ export class TabSyncService {
         const oldGitStatus = existing.state.gitStatus;
         const oldDiagnostics = existing.state.diagnosticSeverity;
         existing.state.gitStatus = this.gitSyncService.getGitStatus(existing.metadata.uri);
-        existing.state.diagnosticSeverity = this.getDiagnosticSeverity(existing.metadata.uri);
+        existing.state.diagnosticSeverity = getDiagnosticSeverity(existing.metadata.uri);
         if (oldGitStatus !== existing.state.gitStatus || oldDiagnostics !== existing.state.diagnosticSeverity) {
           Logger.log(`[TabSync] handleTabChanges - updated git/diagnostics: ${existing.metadata.label}, gitStatus: ${oldGitStatus} -> ${existing.state.gitStatus}, diagnostics: ${oldDiagnostics} -> ${existing.state.diagnosticSeverity}`);
         }
@@ -146,7 +193,7 @@ export class TabSyncService {
   }
 
   //: Sincronización completa (reconstruir todo el estado) 
-  private syncAll(): void {
+  private async syncAll(): Promise<void> {
     for (const group of vscode.window.tabGroups.all) {
       this.stateService.addGroup(createTabGroup(group));
     }
@@ -157,7 +204,7 @@ export class TabSyncService {
     // First pass: collect all tabs, separating parents from children
     for (const group of vscode.window.tabGroups.all) {
       group.tabs.forEach((tab, idx) => {
-        const st = this.convertToSideTab(tab, idx);
+        const st = convertToSideTab(tab, this.gitSyncService, idx);
         if (st) {
           if (st.metadata.parentId) {
             // This is a child tab (diff) - defer it
@@ -171,20 +218,25 @@ export class TabSyncService {
     }
     
     // Second pass: process child tabs after parents are loaded
+    // Process sequentially to ensure parents are opened before children are added
     for (const { sideTab, nativeTab } of childTabs) {
       // Ensure parent exists (will create it if found in native tabs but not yet converted)
-      this.ensureParentExistsForSync(sideTab, nativeTab, allTabs);
+      await this.ensureParentExistsForSync(sideTab, nativeTab, allTabs);
       allTabs.push(sideTab);
     }
     
     this.stateService.replaceTabs(allTabs);
+    
+    // ✅ NUEVO: Recalcular jerarquía después de sync completo
+    this.hierarchyService.recalculateAllCounts();
   }
 
   /**
    * Asegura que el parent tab de un diff exista en el estado.
-   * Si el archivo base no está abierto como tab, lo crea automáticamente.
+   * Si el archivo base no está abierto como tab, lo abre automáticamente
+   * y lo añade al estado, luego asocia el child tab.
    */
-  private ensureParentExists(childTab: SideTab, nativeChildTab: vscode.Tab): void {
+  private async ensureParentExists(childTab: SideTab, nativeChildTab: vscode.Tab): Promise<void> {
     const parentId = childTab.metadata.parentId;
     if (!parentId) { return; }
 
@@ -210,27 +262,57 @@ export class TabSyncService {
       }
     }
 
-    // If found, convert and add it
+    // If found in the group, convert and add it
     if (parentNativeTab) {
-      const parentSideTab = this.convertToSideTab(parentNativeTab);
+      const parentSideTab = convertToSideTab(parentNativeTab, this.gitSyncService);
       if (parentSideTab) {
         Logger.log(`[TabSync] Creating parent tab for child: ${childTab.metadata.label} → ${parentSideTab.metadata.label}`);
         this.stateService.addTab(parentSideTab);
         // Inherit state from parent
-        this.inheritParentState(childTab, parentSideTab);
+        this.hierarchyService.inheritState(childTab, parentSideTab);
       }
     } else {
-      // Parent tab doesn't exist in VS Code - this child is orphaned
-      // The HTML builder will render it as an orphan (full display, no indent)
-      Logger.log(`[TabSync] Orphan child tab detected (no parent in group): ${childTab.metadata.label}`);
+      // Parent tab doesn't exist in VS Code - open it automatically
+      Logger.log(`[TabSync] Parent tab not found, opening automatically: ${childUri.fsPath}`);
+      
+      try {
+        // Open the file in the same group as the child tab
+        const doc = await vscode.workspace.openTextDocument(childUri);
+        await vscode.window.showTextDocument(doc, {
+          viewColumn: group.viewColumn,
+          preview: false, // Open as non-preview to ensure it stays open
+          preserveFocus: true, // Don't steal focus from current tab
+        });
+        
+        // After opening, search for the newly created tab and add it to state
+        // The onDidChangeTabs event will eventually catch it, but we can add it immediately
+        for (const tab of group.tabs) {
+          if (tab.input instanceof vscode.TabInputText) {
+            if (tab.input.uri.toString() === childUri.toString()) {
+              const parentSideTab = convertToSideTab(tab, this.gitSyncService);
+              if (parentSideTab) {
+                Logger.log(`[TabSync] Successfully opened and added parent tab: ${parentSideTab.metadata.label}`);
+                this.stateService.addTab(parentSideTab);
+                this.hierarchyService.inheritState(childTab, parentSideTab);
+              }
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        // If we can't open the parent (e.g., file doesn't exist anymore),
+        // the child will be rendered as orphan
+        Logger.log(`[TabSync] Failed to open parent tab: ${error}`);
+      }
     }
   }
 
   /**
    * Versión de ensureParentExists para el contexto de syncAll.
    * Busca el parent en el array temporal antes de que se agregue al estado.
+   * Si no existe, lo abre automáticamente.
    */
-  private ensureParentExistsForSync(childTab: SideTab, nativeChildTab: vscode.Tab, allTabs: SideTab[]): void {
+  private async ensureParentExistsForSync(childTab: SideTab, nativeChildTab: vscode.Tab, allTabs: SideTab[]): Promise<void> {
     const parentId = childTab.metadata.parentId;
     if (!parentId) { return; }
 
@@ -238,7 +320,7 @@ export class TabSyncService {
     const existingParent = allTabs.find(t => t.metadata.id === parentId);
     if (existingParent) {
       // Inherit state from parent
-      this.inheritParentState(childTab, existingParent);
+      this.hierarchyService.inheritState(childTab, existingParent);
       return; // Parent exists, all good
     }
 
@@ -260,73 +342,92 @@ export class TabSyncService {
 
     // If found, convert and add it to the array
     if (parentNativeTab) {
-      const parentSideTab = this.convertToSideTab(parentNativeTab);
+      const parentSideTab = convertToSideTab(parentNativeTab, this.gitSyncService);
       if (parentSideTab) {
         Logger.log(`[TabSync] Creating parent tab for child during syncAll: ${childTab.metadata.label} → ${parentSideTab.metadata.label}`);
         allTabs.push(parentSideTab);
-        // Inherit state from parent
-        this.inheritParentState(childTab, parentSideTab);
+        this.hierarchyService.inheritState(childTab, parentSideTab);
       }
     } else {
-      // Parent tab doesn't exist in VS Code - this child is orphaned
-      Logger.log(`[TabSync] Orphan child tab detected during syncAll: ${childTab.metadata.label}`);
-    }
-  }
-
-  /**
-   * Makes a child tab inherit relevant state from its parent.
-   * Child tabs show the same git status and diagnostics as their parent file.
-   */
-  private inheritParentState(childTab: SideTab, parentTab: SideTab): void {
-    // Inherit diagnostic and git status
-    childTab.state.diagnosticSeverity = parentTab.state.diagnosticSeverity;
-    childTab.state.gitStatus = parentTab.state.gitStatus;
-    
-    // Calculate diff stats for the child tab
-    this.calculateDiffStats(childTab);
-    
-    Logger.log(`[TabSync] Child tab inherited state: ${childTab.metadata.label} ← diagnostics: ${parentTab.state.diagnosticSeverity}, git: ${parentTab.state.gitStatus}`);
-  }
-
-  /**
-   * Calculates diff statistics for a child tab based on its type.
-   * For working-tree and staged: attempts to get line counts from VS Code diff.
-   * For snapshots: uses timestamp information.
-   */
-  private calculateDiffStats(childTab: SideTab): void {
-    if (!childTab.metadata.diffType) { return; }
-    
-    const diffType = childTab.metadata.diffType;
-    
-    // For working-tree and staged, we'll set placeholder stats
-    // In a real implementation, you would parse the diff content
-    if (diffType === 'working-tree' || diffType === 'staged') {
-      // TODO: Implement actual diff parsing when VS Code API supports it
-      // For now, show placeholder stats
-      childTab.state.diffStats = {
-        linesAdded: 0,
-        linesRemoved: 0,
-      };
-    } else if (diffType === 'snapshot') {
-      // For snapshots, use current time as placeholder
-      childTab.state.diffStats = {
-        timestamp: Date.now(),
-        snapshotName: childTab.metadata.label,
-      };
-    } else if (diffType === 'merge-conflict') {
-      // For merge conflicts, count would need to parse the file
-      childTab.state.diffStats = {
-        conflictSections: 0, // Placeholder
-      };
+      // Parent tab doesn't exist in VS Code - open it automatically
+      Logger.log(`[TabSync] Parent tab not found during sync, opening automatically: ${childUri.fsPath}`);
+      
+      try {
+        // Open the file in the same group as the child tab
+        const doc = await vscode.workspace.openTextDocument(childUri);
+        await vscode.window.showTextDocument(doc, {
+          viewColumn: group.viewColumn,
+          preview: false, // Open as non-preview to ensure it stays open
+          preserveFocus: true, // Don't steal focus from current tab
+        });
+        
+        // After opening, search for the newly created tab and add it to array
+        for (const tab of group.tabs) {
+          if (tab.input instanceof vscode.TabInputText) {
+            if (tab.input.uri.toString() === childUri.toString()) {
+              const parentSideTab = convertToSideTab(tab, this.gitSyncService);
+              if (parentSideTab) {
+                Logger.log(`[TabSync] Successfully opened and added parent tab during sync: ${parentSideTab.metadata.label}`);
+                allTabs.push(parentSideTab);
+                this.hierarchyService.inheritState(childTab, parentSideTab);
+              }
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        // If we can't open the parent (e.g., file doesn't exist anymore),
+        // the child will be rendered as orphan
+        Logger.log(`[TabSync] Failed to open parent tab during sync: ${error}`);
+      }
     }
   }
 
   //: Seguimiento de la pestaña activa (actualiza solo isActive) 
-  private updateActiveTab(_activeUri: vscode.Uri): void {
+  private updateActiveTab(activeUri: vscode.Uri): void {
     // Delegate to syncActiveState which reads tab.isActive from the native API.
     // This correctly handles the same file open in multiple groups
     // (only the focused group's tab will have isActive === true).
     this.syncActiveState();
+
+    // Sync cursor position when activating a tab from the parent-child family
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && activeEditor.document.uri.toString() === activeUri.toString()) {
+      const tab = this.stateService.findTabByUri(activeUri);
+      if (tab && (tab.metadata.parentId || tab.state.hasChildren)) {
+        // This tab is part of a parent-child family, sync cursor position
+        const selection = activeEditor.selection;
+        const line = selection.active.line + 1;
+        const column = selection.active.character + 1;
+        this.hierarchyService.syncCursorPosition(tab.metadata.id, line, column);
+      }
+    }
+  }
+
+  /**
+   * Maneja cambios en la posición del cursor (selección).
+   * Sincroniza la posición entre parent y children si está habilitado.
+   */
+  private handleCursorChange(event: vscode.TextEditorSelectionChangeEvent): void {
+    const uri = event.textEditor.document.uri;
+    const selection = event.selections[0]; // Primary selection
+    
+    if (!selection) {
+      return;
+    }
+
+    // Get line and column (1-based)
+    const line = selection.active.line + 1;
+    const column = selection.active.character + 1;
+
+    // Find tab by URI
+    const tab = this.stateService.findTabByUri(uri);
+    if (!tab) {
+      return;
+    }
+
+    // Sync cursor position with family (parent + children)
+    this.hierarchyService.syncCursorPosition(tab.metadata.id, line, column);
   }
 
   /**
@@ -336,7 +437,7 @@ export class TabSyncService {
     const tab = this.stateService.findTabByUri(uri);
     if (!tab) { return; }
 
-    const newDiagnosticSeverity = this.getDiagnosticSeverity(uri);
+    const newDiagnosticSeverity = getDiagnosticSeverity(uri);
     const newGitStatus = this.gitSyncService.getGitStatus(uri);
 
     Logger.log(`[TabSync] updateTabDiagnostics - ${tab.metadata.label}: diagnostics: ${tab.state.diagnosticSeverity} -> ${newDiagnosticSeverity}, gitStatus: ${tab.state.gitStatus} -> ${newGitStatus}`);
@@ -502,7 +603,15 @@ export class TabSyncService {
       }
     }
 
-    for (const tab of this.stateService.getAllTabs()) {
+    const allTabs = this.stateService.getAllTabs();
+    
+    for (const tab of allTabs) {
+      // ✅ CRITICAL FIX: Child tabs never appear in vscode.window.tabGroups.all
+      // They are internal constructs for visualization. Skip orphan removal.
+      if (tab.metadata.parentId) {
+        continue;
+      }
+      
       if (!nativeIds.has(tab.metadata.id)) {
         Logger.log(`[TabSync] Removing orphaned tab: ${tab.metadata.label} (wasPreview: ${tab.state.isPreview})`);
         this.stateService.removeTab(tab.metadata.id);
@@ -515,311 +624,108 @@ export class TabSyncService {
    * conversion.  Used by `removeOrphanedTabs` and `syncActiveState`.
    */
   private generateIdFromNativeTab(tab: vscode.Tab): string | null {
-    let uri   : vscode.Uri | undefined;
-    let label : string;
-    let tabType: SideTabType;
-
-    if (tab.input instanceof vscode.TabInputText) {
-      uri     = tab.input.uri;
-      label   = path.basename(uri.fsPath);
-      tabType = 'file';
-    } else if (tab.input instanceof vscode.TabInputTextDiff) {
-      uri     = tab.input.modified;
-      label   = tab.label;
-      tabType = 'diff';
-    } else if (tab.input instanceof vscode.TabInputWebview) {
-      label   = tab.label;
-      tabType = 'webview';
-    } else if (tab.input instanceof vscode.TabInputCustom) {
-      uri     = tab.input.uri;
-      label   = path.basename(uri.fsPath) || tab.label || 'Custom';
-      tabType = 'custom';
-    } else if (tab.input instanceof vscode.TabInputNotebook) {
-      uri     = tab.input.uri;
-      label   = path.basename(uri.fsPath);
-      tabType = 'notebook';
-    } else {
-      label   = tab.label;
-      tabType = 'unknown';
-    }
-
-    return this.generateId(label, uri, tab.group.viewColumn, tabType);
+    return generateIdFromNativeTab(tab);
   }
 
   /**
-   * Convierte una pestaña nativa de VS Code a nuestro modelo `SideTab`.
-   *
-   * Explicación simple:
-   * - Si es un archivo (texto, editor custom, notebook) recoge la `uri`, el nombre
-   *   del archivo, la ruta relativa y la extensión.
-   * - Si es una pestaña `webview` (Settings, Extensions, Welcome), NO crea una URI
-   *   falsa; deja `uri` sin definir y genera un id estable basado en la etiqueta.
-   * - El método solo transforma datos y devuelve un `SideTab` listo para la UI.
-   *
-   * Devuelve `SideTab` o `null` si el tipo de pestaña no es soportado.
+   * Asegura que existe un DocumentModel para una tab.
+   * Si no existe, lo crea y lo asocia con la tab.
+   * 
+   * @param tab SideTab para la cual asegurar que existe un documento
    */
-  private convertToSideTab(tab: vscode.Tab, index?: number): SideTab | null {
-    let uri         : vscode.Uri | undefined;
-    let label       : string;
-    let description : string | undefined;
-    let tooltip     : string;
-    let fileType    : string = '';
-    let tabType     : SideTabType = 'file';
-    let viewType    : string | undefined;
-
-    if (tab.input instanceof vscode.TabInputText) {
-      uri         = tab.input.uri;
-      label       = path.basename(uri.fsPath);
-      description = formatFilePath(uri, { useWorkspaceRelative: true });
-      tooltip     = uri.fsPath;
-      fileType    = path.extname(uri.fsPath);
-      tabType     = 'file';
+  private ensureDocumentExists(tab: SideTab): void {
+    if (!tab.metadata.uri) {
+      return;
     }
-    else if (tab.input instanceof vscode.TabInputTextDiff) {
-      // Diff tabs (Working Tree, Staged Changes, etc.)
-      // Use the modified URI as the primary URI (right side of diff)
-      uri         = tab.input.modified;
-      label       = tab.label; // VS Code provides a descriptive label like "file.ts (Working Tree)"
-      description = formatFilePath(uri, { useWorkspaceRelative: true });
-      tooltip     = tab.label;
-      fileType    = path.extname(uri.fsPath);
-      tabType     = 'diff';
-      
-      // Extract short label for child tab display (e.g., "Working Tree" from "file.ts (Working Tree)")
-      const match = label.match(/\(([^)]+)\)$/);
-      if (match) {
-        label = match[1]; // Just "Working Tree", "Staged Changes", etc.
+
+    // Check if document already exists
+    const existing = this.documentManager.getDocumentByUri(tab.metadata.uri);
+    if (existing) {
+      // Associate parent tab if not already associated
+      if (!existing.parentTabId) {
+        this.documentManager.associateParentTab(existing.documentId, tab.metadata.id);
       }
-    }
-    else if (tab.input instanceof vscode.TabInputWebview) {
-      // Webview tabs (Markdown Preview, Release Notes, extension webviews…)
-      // FILTER OUT Markdown Previews - they are handled as a toggle state on the source file tab
-      if (tab.input.viewType === 'markdown.preview' || 
-          tab.label.startsWith('Preview ') && tab.label.endsWith('.md')) {
-        Logger.log('[TabSync] Filtering out Markdown Preview tab (handled as toggle): ' + tab.label);
-        return null;
-      }
-      uri         = undefined;
-      label       = tab.label;
-      description = undefined;
-      tooltip     = tab.label;
-      tabType     = 'webview';
-      viewType    = tab.input.viewType;
-    }
-    else if (tab.input instanceof vscode.TabInputCustom) {
-      uri         = tab.input.uri;
-      label       = path.basename(uri.fsPath) || tab.label || 'Custom';
-      description = formatFilePath(uri, { useWorkspaceRelative: true });
-      tooltip     = uri.fsPath;
-      fileType    = path.extname(uri.fsPath);
-      tabType     = 'custom';
-      viewType    = tab.input.viewType;
-    }
-    else if (tab.input instanceof vscode.TabInputNotebook) {
-      uri         = tab.input.uri;
-      label       = path.basename(uri.fsPath);
-      description = formatFilePath(uri, { useWorkspaceRelative: true });
-      tooltip     = uri.fsPath;
-      fileType    = path.extname(uri.fsPath);
-      tabType     = 'notebook';
-    }
-    else {
-      // Unknown input — built-in editors like Settings, Extensions, Keyboard Shortcuts, Welcome…
-      // tab.input is undefined for these; identify them by tab.label.
-      uri         = undefined;
-      label       = tab.label;
-      description = undefined;
-      tooltip     = tab.label;
-      tabType     = 'unknown';
+      return;
     }
 
-    const viewColumn = tab.group.viewColumn;
+    // Create new document
+    const document = this.documentManager.createDocument({
+      baseUri: tab.metadata.uri,
+      languageId: tab.metadata.languageId || 'plaintext',
+      fileName: tab.metadata.fileName || 'untitled',
+      fileExtension: tab.metadata.fileExtension,
+      parentTabId: tab.metadata.id,
+      fileSize: tab.metadata.fileSize,
+      isReadOnly: tab.metadata.isReadOnly,
+      isBinary: tab.metadata.isBinary,
+    });
 
-    // Calculate parentId and diffType for diff tabs (link to corresponding file tab)
-    let parentId: string | undefined;
-    let diffType: import('../../models/SideTab').DiffType | undefined;
-    if (tabType === 'diff' && uri) {
-      // The parent is the file tab with the same URI in the same group
-      parentId = `${uri.toString()}-${viewColumn}`;
-      // Classify the diff type based on the label
-      diffType = this.classifyDiffType(label);
-    }
-
-    // Build base metadata
-    const baseMetadata: SideTabMetadata = {
-      id: this.generateId(label, uri, viewColumn, tabType),
-      parentId,
-      diffType,
-      uri,
-      label,
-      detailLabel: description,
-      tooltipText: tooltip,
-      fileExtension: fileType,
-      tabType,
-      viewType,
-    };
-
-    // ✨ FASE 2: Enrich metadata with computed properties
-    const metadata = SideTabHelpers.enrichMetadata(baseMetadata);
-
-    // Build base state from VS Code tab
-    const baseState = {
-      isActive       : tab.isActive,
-      isDirty        : tab.isDirty,
-      isPinned       : tab.isPinned,
-      isPreview      : tab.isPreview,
-      groupId        : viewColumn,
-      viewColumn,
-      indexInGroup   : index ?? 0,
-      gitStatus      : uri ? this.gitSyncService.getGitStatus(uri) : null,
-      diagnosticSeverity : uri ? this.getDiagnosticSeverity(uri) : null,
-    };
-
-    // ✨ FASE 3: Get default values for new properties
-    const defaultState = SideTabHelpers.createDefaultState();
-
-    // Merge defaults + base (base overrides defaults)
-    const stateWithDefaults = { ...defaultState, ...baseState };
-
-    // ✨ FASE 3: Compute capabilities based on metadata + state
-    const capabilities = SideTabHelpers.computeCapabilities(metadata, stateWithDefaults);
-
-    // ✨ FASE 4: Map legacy previewMode to new viewMode
-    const viewMode = SideTabHelpers.mapPreviewModeToViewMode(false); // Default to source
-
-    // Build final state with all required properties
-    const state: SideTabState = {
-      // VS CODE NATIVE STATE
-      isActive: tab.isActive,
-      isDirty: tab.isDirty,
-      isPinned: tab.isPinned,
-      isPreview: tab.isPreview,
-      
-      // LOCATION
-      groupId: viewColumn,
-      viewColumn,
-      indexInGroup: index ?? 0,
-      
-      // VISUALIZATION MODE
-      viewMode,
-      
-      // ACTION CONTEXT (from defaults)
-      actionContext: stateWithDefaults.actionContext!,
-      operationState: stateWithDefaults.operationState!,
-      
-      // CAPABILITIES & PERMISSIONS
-      capabilities,
-      permissions: stateWithDefaults.permissions!,
-      
-      // HIERARCHY
-      hasChildren: false, // Will be computed later when children are detected
-      isChild: tabType === 'diff',
-      isExpanded: false,
-      childrenCount: 0,
-      
-      // UI STATE
-      isLoading: false,
-      hasError: false,
-      errorMessage: undefined,
-      isHighlighted: false,
-      
-      // TRACKING
-      lastAccessTime: Date.now(),
-      syncVersion: 0,
-      
-      // DECORATIONS
-      gitStatus: uri ? this.gitSyncService.getGitStatus(uri) : null,
-      diagnosticSeverity: uri ? this.getDiagnosticSeverity(uri) : null,
-      
-      // PROTECTION
-      isTransient: false,
-      isProtected: false,
-      
-      // INTEGRATIONS (from defaults)
-      integrations: stateWithDefaults.integrations!,
-      
-      // CUSTOMIZATION (from defaults)
-      customActions: stateWithDefaults.customActions,
-      shortcuts: stateWithDefaults.shortcuts,
-    };
-
-    return new SideTab(metadata, state);
+    Logger.log(`[TabSync] Created document for tab: ${tab.metadata.label} (docId: ${document.documentId})`);
   }
 
-  /** Stable, unique ID for a tab.  URI-based for files, label-based for webviews. */
-  private generateId(
-    label: string,
-    uri: vscode.Uri | undefined,
-    viewColumn: vscode.ViewColumn,
-    tabType: SideTabType,
-  ): string {
-    if (uri) {
-      // Diff tabs share the same modified URI as the original file — prefix to distinguish
-      const prefix = tabType === 'diff' ? 'diff:' : '';
-      return `${prefix}${uri.toString()}-${viewColumn}`;
-    }
-    // Webview / unknown tabs have no URI — use a sanitised label
-    const safe = label.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
-    return `${tabType}:${safe}-${viewColumn}`;
-  }
   /**
-   * Classifies a diff tab based on its label.
-   * Returns the specific diff type for proper icon and stats display.
+   * Registra una versión (diff) de un documento en el DocumentManager.
+   * 
+   * @param childTab Child tab que representa la versión
+   * @param parentTab Parent tab del documento base
    */
-  private classifyDiffType(label: string): import('../../models/SideTab').DiffType {
-    const lower = label.toLowerCase();
-    
-    if (lower.includes('working tree') || lower === 'working tree') {
-      return 'working-tree';
+  private registerTabVersion(childTab: SideTab, parentTab: SideTab): void {
+    if (!parentTab.metadata.uri || !childTab.metadata.diffType) {
+      return;
     }
-    if (lower.includes('staged') || lower.includes('index')) {
-      return 'staged';
+
+    // Get or create the document
+    const document = this.documentManager.getOrCreateDocument(
+      parentTab.metadata.uri,
+      parentTab.metadata.languageId || 'plaintext',
+      parentTab.metadata.fileName || 'untitled',
+      parentTab.metadata.fileExtension
+    );
+
+    // Associate parent if not already
+    if (!document.parentTabId) {
+      this.documentManager.associateParentTab(document.documentId, parentTab.metadata.id);
     }
-    if (lower.includes('snapshot') || lower.includes('timeline')) {
-      return 'snapshot';
+
+    // Register the version
+    const versionId = this.documentManager.registerVersion(document.documentId, {
+      diffType: childTab.metadata.diffType,
+      originalUri: childTab.metadata.originalUri,
+      modifiedUri: childTab.metadata.uri,
+      label: childTab.metadata.label,
+      description: childTab.metadata.detailLabel,
+      stats: childTab.state.diffStats,
+      relatedTabId: childTab.metadata.id,
+    });
+
+    if (versionId) {
+      // Associate child tab with document
+      this.documentManager.associateChildTab(document.documentId, childTab.metadata.id);
+      // Map tab ID to unique versionId for future reference
+      this.tabIdToVersionId.set(childTab.metadata.id, versionId);
+      Logger.log(`[TabSync] Registered version ${childTab.metadata.diffType} for ${parentTab.metadata.label} (tabId: ${childTab.metadata.id}, versionId: ${versionId})`);
     }
-    if (lower.includes('merge conflict') || lower.includes('conflict')) {
-      return 'merge-conflict';
-    }
-    if (lower.includes('incoming')) {
-      if (lower.includes('current')) {
-        return 'incoming-current';
-      }
-      return 'incoming';
-    }
-    if (lower.includes('current')) {
-      return 'current';
-    }
-    
-    return 'unknown';
   }
+
   /**
-   * Obtiene la severidad más alta de diagnóstico para un archivo.
-   * Retorna Error si hay errores, Warning si hay advertencias, o null si no hay diagnósticos.
+   * Limpia el mapeo de una child tab cuando se cierra
    */
-  private getDiagnosticSeverity(uri: vscode.Uri): vscode.DiagnosticSeverity | null {
-    const diagnostics = vscode.languages.getDiagnostics(uri);
-    if (diagnostics.length === 0) { return null; }
-
-    let maxSeverity: vscode.DiagnosticSeverity | null = null;
-    for (const diagnostic of diagnostics) {
-      if (maxSeverity === null || diagnostic.severity < maxSeverity) {
-        maxSeverity = diagnostic.severity;
-      }
-    }
-
-    // Solo retornar si es Error o Warning
-    if (maxSeverity === vscode.DiagnosticSeverity.Error || 
-        maxSeverity === vscode.DiagnosticSeverity.Warning) {
-      return maxSeverity;
-    }
-
-    return null;
+  private cleanupTabVersionMapping(tabId: string): void {
+    this.tabIdToVersionId.delete(tabId);
+  }
+  
+  /**
+   * Obtiene el versionId único asociado a una tab
+   */
+  getVersionIdForTab(tabId: string): string | undefined {
+    return this.tabIdToVersionId.get(tabId);
   }
 
   dispose(): void {
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
     this.gitSyncService.dispose();
+    this.documentManager.dispose();
+    this.tabIdToVersionId.clear();
   }
 }

@@ -21,6 +21,7 @@ export type BuildHtmlOptions = {
   showPath: boolean;
   copilotReady: boolean;
   enableDragDrop?: boolean;
+  initialLoad?: boolean;
 };
 
 /** Opciones para renderizar una tab individual */

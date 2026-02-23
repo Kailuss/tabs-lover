@@ -13,6 +13,53 @@ export class StylesBuilder {
   // Note: Seti font removed - VS Code provides file icons through its API
 
   /**
+   * Genera CSS crítico inline para prevenir FOUC (Flash of Unstyled Content).
+   * Incluye estilos mínimos para iconos y layout básico que se aplican inmediatamente.
+   */
+  buildCriticalCSS(): string {
+    return `
+/* Critical CSS to prevent FOUC */
+.tab-icon-wrapper {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tab-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+.child-tab .tab-icon-wrapper {
+  width: 14px;
+  height: 14px;
+}
+.child-tab .tab-icon {
+  width: 14px;
+  height: 14px;
+}
+.codicon {
+  width: auto;
+  height: auto;
+}
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  opacity: 0;
+  transition: opacity 1250ms ease-in-out;
+  transition-delay: 1500ms;
+}
+body.loaded {
+  opacity: 1;
+}
+`.trim();
+  }
+
+  /**
    * Genera la Content Security Policy para el webview.
    */
   buildCSP(webview: vscode.Webview, nonce: string): string {
